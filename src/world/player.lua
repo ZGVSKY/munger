@@ -14,6 +14,7 @@ function player_class:create(color)
     player.caste = nil
     player.buildings = {}
     player.units = {}
+    player.camera_position = {x=0,y=0}
     return player
 
 function player_class:manage_resourses(player, gold, wood, stone)
