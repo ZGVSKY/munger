@@ -21,7 +21,7 @@ function scene:create( event )
 
     -- preload assets as a textures
 
-    local assest_to_load = {'background.jpg', 'logo.png'}
+    local assest_to_load = {'background.png', 'logo.png', 'menu_background.png'}
     local loaded_assets = {}
 
     -- for each object from the assest_to_load list , we create an object of texture type and preload it
@@ -40,12 +40,15 @@ function scene:create( event )
     -- build the scene
 
     -- create objects
-    local background = display.newImageRect( sceneGroup.textures[1].filename, sceneGroup.textures[1].baseDir, screen_width, screen_height )
-    local logo = display.newImageRect( sceneGroup.textures[2].filename, sceneGroup.textures[1].baseDir, 338*2, 56*2 )
+    sceneGroup.background = display.newImageRect( sceneGroup.textures[1].filename, sceneGroup.textures[1].baseDir, 864*(screen_height/1091), 1091*(screen_height/1091) )
+    sceneGroup.logo = display.newImageRect( sceneGroup.textures[2].filename, sceneGroup.textures[1].baseDir, 338*2, 56*2 )
+    sceneGroup.menu_background = display.newImageRect(sceneGroup.textures[3].filename, sceneGroup.textures[1].baseDir, screen_width-110, screen_height*0.65 )
 
     -- setup objects position and parametrs 
-    background.x = screen_width/2; background.y = screen_height/2
-    logo.x = screen_width/2; logo.y = screen_height*0.15
+    sceneGroup.background.x = screen_width/2;      sceneGroup.background.y = screen_height/2
+    sceneGroup.logo.x = screen_width/2;            sceneGroup.logo.y = screen_height*0.10
+    sceneGroup.menu_background.x = screen_width/2; sceneGroup.menu_background.y = screen_height/2
+    
 
     -----------------------------------------------------------------------
 
