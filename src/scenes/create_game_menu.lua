@@ -16,39 +16,79 @@ screen_height = display.actualContentHeight
 function scene:create( event )
     -- Called when the scene is created
 
-	local sceneGroup = self.view
-	local phase = event.phase
+    local sceneGroup = self.view
+    local phase = event.phase
 
     -- preload assets as a textures
 
-    local assest_to_load = {'background.jpg', 'logo.png'}
+    local assest_to_load = {
+        'background (1).png',    
+        'logo.png',          
+        'Rectangle1.png',  
+        'Players.png', 
+        'Line1.png',         
+        'Line2.png',         
+        'player.png',        
+        'addnew.png'         
+    }
+    
     local loaded_assets = {}
 
-    -- for each object from the assest_to_load list , we create an object of texture type and preload it
-    for i=1,#assest_to_load do
+   for i=1,#assest_to_load do
         loaded_assets[i] = graphics.newTexture( {
             type = "image",
             filename = assets_path .. assest_to_load[i],
             baseDir = system.ResourceDirectory
         } )
         loaded_assets[i]:preload()
+
+        if loaded_assets[i] == nil then
+            print( " Немає: " .. imagePath )
+
+        else
+            loaded_assets[i]:preload()
+        end
+
+        
     end
-    sceneGroup.textures = loaded_assets -- adding all textures to scene group
+    sceneGroup.textures = loaded_assets
+        
+    local background = display.newImageRect( sceneGroup, sceneGroup.textures[1].filename, sceneGroup.textures[1].baseDir, screen_width, screen_height )
+    local logo = display.newImageRect( sceneGroup, sceneGroup.textures[2].filename, sceneGroup.textures[2].baseDir, 338*2, 56*2 )
+    -- розмір панелі
+    local panel_width = screen_width * 0.85
+    local panel_height = screen_height * 0.65
+
+    local panel = display.newImageRect( sceneGroup, sceneGroup.textures[3].filename, sceneGroup.textures[3].baseDir, panel_width, panel_height )
+    local playersText = display.newImageRect( sceneGroup, sceneGroup.textures[4].filename, sceneGroup.textures[4].baseDir, 152*2, 43*2 )
+    local line1 = display.newImageRect( sceneGroup, sceneGroup.textures[5].filename, sceneGroup.textures[5].baseDir, 442*2, 23*2 )
+    local line2 = display.newImageRect( sceneGroup, sceneGroup.textures[6].filename, sceneGroup.textures[6].baseDir, 442*2, 23*2 )
+    local addButton = display.newImageRect( sceneGroup, sceneGroup.textures[8].filename, sceneGroup.textures[8].baseDir, 89*2, 60*2 )
+
+
+
+    background.x = screen_width / 2
+    background.y = screen_height / 2
+
+    logo.x = screen_width / 2
+    logo.y = screen_height * 0.15
+
+    panel.x = screen_width / 2
+    panel.y = screen_height * 0.55
+
+    playersText.x = screen_width / 2
+    playersText.y = panel.y - (panel_height * 0.1)
+
+    line1.x = screen_width / 2
+    line1.y = playersText.y + 70
+
+    line2.x = screen_width / 2
+    line2.y = panel.y + (panel_height * 0.25)
+
+    addButton.x = (screen_width / 2) - 330
+    addButton.y =  panel.y + (panel_height * 0.30)
+
     
-    -----------------------------------------------------------------------
-
-    -- build the scene
-
-    -- create objects
-    local background = display.newImageRect( sceneGroup.textures[1].filename, sceneGroup.textures[1].baseDir, screen_width, screen_height )
-    local logo = display.newImageRect( sceneGroup.textures[2].filename, sceneGroup.textures[1].baseDir, 338*2, 56*2 )
-
-    -- setup objects position and parametrs 
-    background.x = screen_width/2; background.y = screen_height/2
-    logo.x = screen_width/2; logo.y = screen_height*0.15
-
-    -----------------------------------------------------------------------
-
 end
 
 function scene:show( event )
