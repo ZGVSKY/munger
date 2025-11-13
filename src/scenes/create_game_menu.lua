@@ -58,8 +58,22 @@ function scene:show( event )
     -- Called when the scene on the screen
 	local sceneGroup = self.view
 	local phase = event.phase
+    if event.phase == "will" then
+		-- Called when the scene is on screen and is about to move off screen
+		-- e.g. stop timers, stop animation, unload sounds, etc.)
+        
+        -----------------------------------------------
+        --for test generation logic
+       
+        local picked_players = {'pink', 'purple', 'blue'}
+        local world = require("src.world.world")
+        world:init(picked_players)
+        -----------------------------------------------
+
+	elseif phase == "did" then
+        print( "show "..phase )
+	end	
     
-    print( "show" )
 end
 
 function scene:hide( event )
