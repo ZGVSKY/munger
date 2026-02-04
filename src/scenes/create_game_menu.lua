@@ -59,7 +59,7 @@ function scene:create( event )
         { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, 
         { 1, 1, 0 }, { 0, 1, 1 }, { 1, 0, 1 }  
     }
-
+    -- розмір іконки кольору
     local colorButtonSize = 80
     local colorButtonPadding = 20
     local colorStartX = -(colorButtonSize * 1.5 + colorButtonPadding) 
@@ -68,6 +68,7 @@ function scene:create( event )
     sceneGroup.currentSelectedColorIndex = nil
     sceneGroup.tempRGB = nil
 
+    -- розташування другої панель ( її розмірність ) 
     local startX = (screen_width / 2) - 330
     local startY = panel.y + (panel_height * 0.30)
     
@@ -76,9 +77,9 @@ function scene:create( event )
     local padding = 40 
     local verticalPadding = 20 
 
-    -- Оголошення функцій (Forward Declaration)
     local onAddButtonTap, onColorSelected, onNameFieldInput, onDoneButtonTap, checkDoneButtonState
 
+    -- створюємо іконку для гравця 
     local function createPlayerIcon( xPos, yPos )
         local icon = display.newImageRect( sceneGroup, sceneGroup.textures[7].filename, sceneGroup.textures[7].baseDir, iconWidth, iconHeight )
         icon.x = xPos
@@ -142,7 +143,6 @@ function scene:create( event )
 
     
 
-    -- ВИПРАВЛЕНО: Правильне присвоєння функції
     onColorSelected = function( event )
         local selectedButton = event.target
         local selectedIndex = selectedButton.colorIndex 
