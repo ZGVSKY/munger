@@ -67,7 +67,16 @@ function scene:show( event )
        
         local picked_players = {'pink', 'purple', 'blue'}
         local world = require("src.world.world")
+
         world:init(picked_players)
+        local test_texture = world:test()
+
+        sceneGroup.text_rect = display.newImageRect(test_texture.filename,test_texture.baseDir,test_texture.width,test_texture.height);
+        sceneGroup.text_rect.x = 0;      sceneGroup.text_rect.y = 40
+
+        camera = require("src.utils.moveAndScale")
+        
+        camera:start(camera:init(sceneGroup.text_rect))
         -----------------------------------------------
 
 	elseif phase == "did" then
