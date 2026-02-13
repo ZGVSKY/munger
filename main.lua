@@ -20,8 +20,9 @@ system.activate( "multitouch" )                                 -- activate mult
 composer = require( "composer" )                                -- create a composer object used to control scenes
 composer.recycleOnSceneChange = true                            -- enable auto-recycle on scene change
 composer.isDebug = true                                         -- enable composer debug info
-
+math.randomseed(os.time())                                      -- setup global random seed
 -- go to main menu scene
 
 
-composer.gotoScene( "src.scenes.create_game_menu" )                        -- moves to the main scene
+--composer.gotoScene( "src.scenes.create_game_menu" )                        -- moves to the main scene
+composer.gotoScene( "src.scenes.loading" )

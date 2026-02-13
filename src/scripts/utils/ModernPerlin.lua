@@ -238,13 +238,12 @@ function simplex.Turbulence(func, direction, iter, ...)
     return math.sin(dir_component+ret)
 end
 
-function simplex.getFractalNoise_Fast(x, y, seed, octaves)
+function simplex.getFractalNoise_Fast(x, y, seed, octaves, persistence, scale )
 	-- octaves Кількість шарів (деталізація). 6-8 - добре
     local totalNoise = 0.0
     local amplitude = 1.0    -- "Сила" першого шару
-    local frequency = 40     -- "Масштаб" першого шару
+    local frequency = scale     -- "Масштаб" першого шару
           
-    local persistence = 0.5   -- Спадання амплітуди (0.5 = кожен шар вдвічі слабший)
     local lacunarity = 2.0    -- Зростання частоти (2.0 = кожен шар вдвічі деталізованіший)
 	--seed = 1000
     for i = 1, octaves do
