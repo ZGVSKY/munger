@@ -58,8 +58,31 @@ function scene:show( event )
     -- Called when the scene on the screen
 	local sceneGroup = self.view
 	local phase = event.phase
+    if event.phase == "will" then
+		-- Called when the scene is on screen and is about to move off screen
+		-- e.g. stop timers, stop animation, unload sounds, etc.)
+        
+        -----------------------------------------------
+        --for test generation logic
+       
+        local picked_players = {'pink', 'purple', 'blue'}
+        local world = require("src.world.world")
+
+        world:init(picked_players)
+        local test_texture = world:test()
+
+        sceneGroup.text_rect = display.newImageRect(test_texture.filename,test_texture.baseDir,test_texture.width,test_texture.height);
+        sceneGroup.text_rect.x = 0;      sceneGroup.text_rect.y = 40
+
+        camera = require("src.utils.moveAndScale")
+        
+        camera:start(camera:init(sceneGroup.text_rect))
+        -----------------------------------------------
+
+	elseif phase == "did" then
+        print( "show "..phase )
+	end	
     
-    print( "show" )
 end
 
 function scene:hide( event )

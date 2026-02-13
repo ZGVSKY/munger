@@ -212,55 +212,12 @@ function touch(self, e)
     -- get the object which received the touch event
     local target = e.target
 
-    if scene.CheckToCloseUnitsMenu ~= nil then
-        scene.CheckToCloseUnitsMenu = nil
-        display.remove(scene.UnitsListTable)
-
-        display.remove(scene.createUnitButtonL1)
-        display.remove(scene.createUnitButtonL2)
-        display.remove(scene.createUnitButtonL3)
-
-        display.remove(scene.textCreateUnitButtonL1)
-        display.remove(scene.textCreateUnitButtonL2)
-        display.remove(scene.textCreateUnitButtonL3)
-
-               
-
-        scene.createUnitButton.alpha = 1
-    end
-    
-    if scene.CheckToCloseBuiuldingsMenu ~= nil then
-        scene.CheckToCloseBuiuldingsMenu = nil
-        display.remove(scene.createBuildingButtonL1)
-        display.remove(scene.createBuildingButtonL2)
-        display.remove(scene.createBuildingButtonL3)
-
-
-        display.remove(scene.BuildingListTable)
-
-
-        scene.createBuildingButtonOne.alpha = 1
-
-
-    end
-    if scene.CheckToCloseSecondBuiuldingsMenu ~= nil then
-        scene.CheckToCloseSecondBuiuldingsMenu = nil
-
-        display.remove(scene.createBuildingButtonL4)
-
-        display.remove(scene.SecondBuildingListTable)
-
-
-        scene.createBuildingButtonTwo.alpha = 1
-
-    end
-    
     -- get reference to self object
     local rect = self
 
     -- handle began phase of the touch event life cycle...
     if (e.phase == "began") then
-        --print( e.phase, e.x, e.y )
+        print( e.phase, e.x, e.y )
 
         -- create a tracking dot
         local dot = newTrackDot(e)
@@ -277,9 +234,8 @@ function touch(self, e)
         -- we handled the began phase
         return true
     elseif (e.parent == rect) then
-        
         if (e.phase == "moved") then
-            --print( e.phase, e.x, e.y )
+            print( e.phase, e.x, e.y )
 
             -- declare working variables
             local centre, scale, rotate = {}, 1, 0
@@ -293,33 +249,25 @@ function touch(self, e)
             -- if there is more than one tracking dot, calculate the rotation and scaling
             if (#rect.dots > 1) then
                 -- calculate the average rotation of the tracking dots
-                --rotate = calcAverageRotation( rect.dots )
+                rotate = calcAverageRotation( rect.dots )
 
                 -- calculate the average scaling of the tracking dots
                 scale = calcAverageScaling( rect.dots )
 
                 -- apply rotation to rect
-                --rect.rotation = rect.rotation + rotate
+                rect.rotation = rect.rotation + rotate
 
                 -- apply scaling to rect
-                if rect.xScale * scale < 3 and  rect.yScale * scale < 3 then
-                    if rect.xScale * scale >= 1 and  rect.yScale * scale >= 1 then
-                        rect.xScale, rect.yScale = rect.xScale * scale, rect.yScale * scale 
-                    else return end
-                else return end
+                rect.xScale, rect.yScale = rect.xScale * scale, rect.yScale * scale
             end
 
             -- declare working point for the rect location
             local pt = {}
-            
-            -- translation relative to centre point move
 
+            -- translation relative to centre point move
             pt.x = rect.x + (centre.x - rect.prevCentre.x)
             pt.y = rect.y + (centre.y - rect.prevCentre.y)
-            
-            
-            
-            
+
             -- scale around the average centre of the pinch
             -- (centre of the tracking dots, not the rect centre)
             pt.x = centre.x + ((pt.x - centre.x) * scale)
@@ -327,24 +275,15 @@ function touch(self, e)
 
             -- rotate the rect centre around the pinch centre
             -- (same rotation as the rect is rotated!)
-            --pt = rotateAboutPoint( pt, centre, rotate, false )
+            pt = rotateAboutPoint( pt, centre, rotate, false )
 
             -- apply pinch translation, scaling and rotation to the rect centre
-            
-            local xMAX = -(1700)*(rect.xScale*1.2)
-            local yMAX = -(1100)*(rect.yScale*1.2)
-            if pt.x <= -27 and pt.x > xMAX then 
-                rect.x = pt.x
-            else if pt.x <= -27 then pt.x = -27 else pt.x = xMAX-1 end end
-            if pt.y <= -90 and pt.y > yMAX then 
-                rect.y = pt.y
-            else if pt.y <= -90 then pt.y = -90 else pt.y = yMAX-1 end end
-            
+            rect.x, rect.y = pt.x, pt.y
 
             -- store the centre of all touch points
             rect.prevCentre = centre
         else -- "ended" and "cancelled" phases
-            --print( e.phase, e.x, e.y )
+            print( e.phase, e.x, e.y )
 
             -- remove the tracking dot from the list
             if (isDevice or e.numTaps == 2) then
@@ -373,16 +312,11 @@ end
 
 local MAS = {}
 
-function MAS:init(rect,g1,g2,g3,g4, scen)
+function MAS:init(rect)
 
     local group = display.newGroup()
-    scene = scen
-    group:insert(rect)  
+    group:insert( rect ) 
     group.dots = {}
-    group:insert(g1)
-    group:insert(g2)
-    group:insert(g3)
-    group:insert(g4)
     return group
 end
 

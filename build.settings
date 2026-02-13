@@ -42,7 +42,10 @@ settings =
 	--
 	plugins =
 	{
-
+		["plugin.bit"] =
+        {
+            publisherId = "com.coronalabs"
+        },
 	},
 
 	--
