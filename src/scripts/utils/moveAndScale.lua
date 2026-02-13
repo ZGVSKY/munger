@@ -217,7 +217,7 @@ function touch(self, e)
 
     -- handle began phase of the touch event life cycle...
     if (e.phase == "began") then
-        print( e.phase, e.x, e.y )
+        --print( e.phase, e.x, e.y )
 
         -- create a tracking dot
         local dot = newTrackDot(e)
@@ -235,7 +235,7 @@ function touch(self, e)
         return true
     elseif (e.parent == rect) then
         if (e.phase == "moved") then
-            print( e.phase, e.x, e.y )
+            --print( e.phase, e.x, e.y )
 
             -- declare working variables
             local centre, scale, rotate = {}, 1, 0
@@ -283,7 +283,7 @@ function touch(self, e)
             -- store the centre of all touch points
             rect.prevCentre = centre
         else -- "ended" and "cancelled" phases
-            print( e.phase, e.x, e.y )
+            --print( e.phase, e.x, e.y )
 
             -- remove the tracking dot from the list
             if (isDevice or e.numTaps == 2) then

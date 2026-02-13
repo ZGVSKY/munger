@@ -4,16 +4,26 @@ local WorldGenerator = {}
 -- Імпорти
 local Perlin = require("src.scripts.utils.ModernPerlin")
 local Logger = require("src.scripts.utils.logger")
+local Biomes = require("src.scripts.config.Biomes")
 
 --------------------------------------------------------------------------------
 -- Приватні допоміжні функції
 --------------------------------------------------------------------------------
 
 -- Маска острова (Градієнт від центру)
-local function applyIslandMask(grid, width, height)
+local function applyIslandMask(grid, width, height, landPercent)
     local centerX = width / 2
     local centerY = height / 2
+    
+    -- Максимальна дистанція від центру до кута
     local maxDist = math.sqrt(centerX^2 + centerY^2)
+    
+    -- Переводимо відсотки (80%) у коефіцієнт (0.8)
+    -- Це буде радіус нашого "Плато", де маска = 1.0
+    local plateauRadius = (landPercent or 50) / 100
+    
+    -- Трохи зменшуємо радіус, щоб 100% не впиралось прямо в кути
+    plateauRadius = plateauRadius * 0.85 
 
     for x = 1, width do
         for y = 1, height do
@@ -21,14 +31,26 @@ local function applyIslandMask(grid, width, height)
             local dy = y - centerY
             local dist = math.sqrt(dx^2 + dy^2)
             
-            -- Градієнт: 1 в центрі, 0 по краях.
-            -- Використовуємо ступінь (^3), щоб зробити краї різкішими (більше моря)
-            local gradient = 1 - (dist / maxDist)
-            gradient = math.pow(gradient, 1.5) -- Експериментуй з цим числом (0.5 - 3.0)
+            -- Нормалізована дистанція (0.0 в центрі, 1.0 в кутку)
+            local distNorm = dist / maxDist
+            
+            local gradient = 1
+            
+            if distNorm > plateauRadius then
+                -- Ми за межами плато, починаємо спуск
+                -- Обчислюємо, скільки місця залишилось до краю (від 0.0 до 1.0)
+                local remainingDist = 1.0 - plateauRadius
+                local posInFade = (distNorm - plateauRadius) / remainingDist
+                
+                -- Лінійний спад від 1 до 0
+                gradient = 1 - posInFade
+                
+                -- Робимо спад більш плавним (крива)
+                if gradient < 0 then gradient = 0 end
+                gradient = math.pow(gradient, 2.0) 
+            end
 
-            if gradient < 0 then gradient = 0 end
-
-            -- Множимо висоту на маску
+            -- Застосовуємо маску
             grid[x][y].height = grid[x][y].height * gradient
         end
     end
@@ -89,6 +111,29 @@ local function traceRiver(grid, startX, startY, width, height, seaLevel)
     end
 end
 
+-- Додає вологість навколо річок та озер
+local function addRiverMoisture(grid, width, height)
+    for x = 1, width do
+        for y = 1, height do
+            local cell = grid[x][y]
+            if cell.isRiver or cell.isLake then
+                -- Радіус впливу річки  - тільки сусіди
+                for dx = -2, 2 do
+                    for dy = -2, 2 do
+                        local nx, ny = x+dx, y+dy
+                        if nx>0 and nx<=width and ny>0 and ny<=height then
+                            -- Додаємо вологу (чим ближче, тим більше)
+                            local dist = math.sqrt(dx*dx + dy*dy)
+                            local bonus = 0.25 / (dist + 0.1)
+                            grid[nx][ny].moisture = math.min(1, grid[nx][ny].moisture + bonus)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Публічні методи
 --------------------------------------------------------------------------------
@@ -102,7 +147,10 @@ function WorldGenerator.createGenerationCoroutine(params)
         local width = params.width or 50
         local height = params.height or 50
         local seed = params.seed or os.time()
-        local seaLevel = params.seaLevel or 0.3
+        local seaLevel = -0.5
+        
+
+        local landPercent = params.landPercent or 80
         
         -- Налаштування шуму
         local scale = params.scale or 0.05
@@ -144,8 +192,11 @@ function WorldGenerator.createGenerationCoroutine(params)
 
         -- 2. Маска
         if params.enableOcean then
-            Logger.info("Gen", "Phase 2: Island Mask")
-            applyIslandMask(grid, width, height)
+            Logger.info("Gen", "Phase 2: Island Mask (Size: " .. landPercent .. "%)")
+            
+            -- Передаємо параметр landPercent
+            applyIslandMask(grid, width, height, landPercent)
+            
             coroutine.yield({ status = "Shaping Island...", progress = 0.4 })
         end
 
@@ -174,6 +225,38 @@ function WorldGenerator.createGenerationCoroutine(params)
                 end
             end
             Logger.info("Gen", "Spawned " .. riversSpawned .. " rivers")
+        end
+        -- 4. ВОЛОГІСТЬ (Moisture Map)
+        Logger.info("Gen", "Phase 4: Moisture Map")
+        -- Використовуємо інший offset для шуму, щоб він не співпадав з висотою
+        local moistureSeed = seed + 1000 
+        
+        for x = 1, width do
+            for y = 1, height do
+                -- Генеруємо шум вологості (трохи менш детальний, scale * 0.8)
+                local m = Perlin.getFractalNoise_Fast(x, y, moistureSeed, 3, 0.5, (params.scale or 0.1) * 0.8)
+                grid[x][y].moisture = m
+            end
+            if x % 10 == 0 then coroutine.yield({ status = "Watering...", progress = 0.8 }) end
+        end
+
+        -- Додаємо вплив річок на вологість
+        if params.enableRivers then
+            addRiverMoisture(grid, width, height)
+        end
+
+        -- 5. БІОМИ (Classification)
+        Logger.info("Gen", "Phase 5: Biomes")
+        for x = 1, width do
+            for y = 1, height do
+                local cell = grid[x][y]
+                
+                -- Визначаємо біом на основі висоти та вологості
+                cell.biome = Biomes.getBiome(cell.height, cell.moisture)
+                
+                -- Перезаписуємо тип для зручності
+                cell.type = cell.biome.id 
+            end
         end
 
         coroutine.yield({ status = "Finalizing...", progress = 1.0 })

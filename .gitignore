@@ -3,4 +3,5 @@ src/assets/*
 AndroidResources/*
 Images.xcassets/*
 LaunchScreen.storyBoardc/*
+dist/*
 Icon.png

@@ -1,13 +1,24 @@
 -- src/scenes/loading.lua
 local composer = require("composer")
 local scene = composer.newScene()
-
+local MapRenderer = require("src.scripts.world.MapRenderer")
 local WorldGenerator = require("src.scripts.world.WorldGenerator")
 local Logger = require("src.scripts.utils.logger")
 
-local generationCo
+-- Підключаємо камеру
+local MAS = require("src.scripts.utils.moveAndScale") 
+
+
 local startTime
 local loadingText, loadingBarBG, loadingBarFill
+
+local generationCo -- Корутина генерації даних
+local renderingCo  -- Корутина малювання текстури (нова)
+local mapGridData  -- Тут збережемо згенеровані дані перед малюванням
+
+local STATE_GEN = 1
+local STATE_RENDER = 2
+local currentState = STATE_GEN
 
 -- Налаштування сцени (UI)
 function scene:create(event)
@@ -40,106 +51,93 @@ function scene:create(event)
 end
 
 -- Функція, яка виконується кожен кадр
+-- Функція, яка виконується кожен кадр
 local function onFrame(event)
-    if not generationCo then return end
-
-    -- Виділяємо 16мс (60 FPS) на генерацію. 
-    -- Якщо хочеш, щоб генерація йшла швидше, збільш до 30.
-    local timeBudget = 15 
-    local startTimeFrame = system.getTimer()
-
-    local active = true
-
-    while active and (system.getTimer() - startTimeFrame < timeBudget) do
+    local timeBudget = 15 -- 15мс на кадр
+    local startFrame = system.getTimer()
+    
+    -- Працюємо поки є час
+    while (system.getTimer() - startFrame < timeBudget) do
         
-        -- Перевіряємо статус корутини
-        if coroutine.status(generationCo) == "dead" then
-            active = false
-            return -- Корутина вже закінчила роботу
-        end
+        if currentState == STATE_GEN then
+            -------------------------------------------------------
+            -- ЕТАП 1: ГЕНЕРАЦІЯ ДАНИХ
+            -------------------------------------------------------
+            if coroutine.status(generationCo) == "dead" then
+                -- Генерація завершена, переходимо до рендеру
+                return -- чекаємо наступного кадру
+            end
 
-        -- Робимо крок генерації
-        local success, data = coroutine.resume(generationCo)
-
-        if not success then
-            Logger.error("Loader", "Generation Failed: " .. tostring(data))
-            loadingText.text = "Error!"
-            Runtime:removeEventListener("enterFrame", onFrame)
-            return
-        end
-
-        -- Якщо генерація завершена (функція повернула return)
-        if coroutine.status(generationCo) == "dead" then
-            local finalTime = system.getTimer() - startTime
-            Logger.info("Loader", "Finished in " .. finalTime .. "ms")
+            local success, data = coroutine.resume(generationCo)
             
-            loadingText.text = "Done!"
-            loadingBarFill.width = 296
-            
-            Runtime:removeEventListener("enterFrame", onFrame)
+            if not success then
+                print("Error Gen:", data); Runtime:removeEventListener("enterFrame", onFrame); return
+            end
 
-            -------------------------------------------------------------
-            -- НОВА ВІЗУАЛІЗАЦІЯ (Фіксований розмір)
-            -------------------------------------------------------------
-            local grid = data.result
-            
-            -- НАЛАШТУВАННЯ: Розмір однієї клітинки в пікселях
-            local FIXED_CELL_SIZE = 32 
-            
-            -- Створюємо групу, щоб тримати всю карту разом
-            local mapGroup = display.newGroup()
-            --sceneGroup:insert(mapGroup) -- Додаємо в сцену
-
-            -- Розрахунок позиції: Центруємо карту на екрані
-            -- Оскільки карта велика, краї будуть за межами екрану
-            local totalMapWidth = #grid * FIXED_CELL_SIZE
-            local totalMapHeight = #grid[1] * FIXED_CELL_SIZE
-            
-            local startX = (display.contentWidth - totalMapWidth) / 2
-            local startY = (display.contentHeight - totalMapHeight) / 2
-
-            for x = 1, #grid do
-                for y = 1, #grid[1] do
-                    local cell = grid[x][y]
-                    
-                    -- Малюємо квадрат фіксованого розміру
-                    local rect = display.newRect(
-                        mapGroup, 
-                        startX + (x-1) * FIXED_CELL_SIZE, -- x-1 щоб почати з 0
-                        startY + (y-1) * FIXED_CELL_SIZE, 
-                        FIXED_CELL_SIZE, 
-                        FIXED_CELL_SIZE
-                    )
-                    
-                    -- Налаштування кольорів (без змін)
-                    if cell.isLake then
-                        rect:setFillColor(0, 0, 0.8)
-                    elseif cell.isRiver then
-                        rect:setFillColor(0, 0.5, 1)
-                    elseif cell.height < 0.3 then 
-                        rect:setFillColor(0, 0, 0.5)
-                    elseif cell.height < 0.35 then 
-                        rect:setFillColor(1, 1, 0.6)
-                    elseif cell.height < 0.7 then 
-                        rect:setFillColor(0.2, 0.8, 0.2)
-                    else 
-                        rect:setFillColor(0.6, 0.6, 0.6)
-                    end
-                    
-                    -- Тонка рамка, щоб бачити сітку (опціонально)
-                    rect.strokeWidth = 1
-                    rect:setStrokeColor(0, 0, 0, 0.1)
+            if coroutine.status(generationCo) == "dead" then
+                -- Дані готові!
+                mapGridData = data.result
+                Logger.info("Loader", "Data generated. Starting Renderer...")
+                
+                -- Перемикаємось на етап рендеру
+                currentState = STATE_RENDER
+                
+                -- Створюємо корутину рендеру, передаємо їй дані
+                -- Створюємо тимчасову групу, куди рендер покладе картинку
+                scene.tempMapGroup = display.newGroup() 
+                renderingCo = MapRenderer.createRenderCoroutine(mapGridData, scene.tempMapGroup)
+            else
+                -- Оновлення прогресу генерації
+                if data and data.progress then
+                    loadingText.text = data.status
+                    loadingBarFill.width = 296 * (data.progress * 0.5) -- Перші 50% бару
                 end
             end
+
+        elseif currentState == STATE_RENDER then
+            -------------------------------------------------------
+            -- ЕТАП 2: МАЛЮВАННЯ ТЕКСТУРИ
+            -------------------------------------------------------
+            if not renderingCo or coroutine.status(renderingCo) == "dead" then
+                return
+            end
+
+            local success, data = coroutine.resume(renderingCo)
             
-            Logger.info("Loader", "Visualized map with cell size: " .. FIXED_CELL_SIZE)
-            -------------------------------------------------------------
-            
-        else
-            -- Оновлення UI
-            if data and data.progress then
-                loadingText.text = data.status
-                loadingBarFill.width = 296 * data.progress
+            if not success then
+                print("Error Render:", data); Runtime:removeEventListener("enterFrame", onFrame); return
+            end
+
+            if coroutine.status(renderingCo) == "dead" then
+                -- РЕНДЕР ЗАВЕРШЕНО!
+                Logger.info("Loader", "Rendering complete!")
+                
+                Runtime:removeEventListener("enterFrame", onFrame)
+                loadingText.text = "Done!"
+                loadingBarFill.width = 296
+                
+                -- Отримуємо готову картинку
+                local mapImage = data.result
+                
+                -- Ініціалізуємо камеру MAS
+                -- mapImage вже знаходиться в scene.tempMapGroup
+                local cameraGroup = MAS:init(scene.tempMapGroup)
+                scene.view:insert(cameraGroup)
+                
+                cameraGroup.x = display.contentCenterX
+                cameraGroup.y = display.contentCenterY
+                MAS:start(cameraGroup)
+                
+                
+               
+                
+            else
+                -- Оновлення прогресу рендеру
+                if data and data.progress then
+                    loadingText.text = data.status
+                    -- Друга половина бару (від 50% до 100%)
+                    loadingBarFill.width = 148 + (148 * data.progress)
+                end
             end
         end
     end
@@ -147,19 +145,27 @@ end
 
 function scene:show(event)
     if event.phase == "did" then
-        -- Запускаємо генерацію при показі сцени
-        local params = {
-            width = 600,   -- Поки що маленька карта для тесту
-            height = 600,
+    local params = inputParams or {
+            width = 200,
+            height = 200,
             seed = os.time(),
-            scale = 40,    -- Масштаб шуму
+            scale =80, 
             enableOcean = true,
             enableRivers = true,
-            riverCount = 30,
-            seaLevel = -0.3
-        }
-
-        Logger.info("Loader", "Starting Generator Coroutine")
+            riverCount = 40,
+            landPercent = "80"
+        }        
+        self.genParams = params
+        
+        -- Скидаємо стани
+        currentState = STATE_GEN
+        renderingCo = nil
+        mapGridData = nil
+        
+        loadingText.text = "Generating Data..."
+        loadingBarFill.width = 0
+        
+        -- Створюємо першу корутину (Генерація чисел)
         generationCo = WorldGenerator.createGenerationCoroutine(params)
         startTime = system.getTimer()
 

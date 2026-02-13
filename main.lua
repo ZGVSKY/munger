@@ -16,6 +16,8 @@
 display.setStatusBar(display.HiddenStatusBar)                   -- hide status bar (top panel) on android devices
 native.setProperty( "androidSystemUiVisibility", "immersive" )  -- hide navigation (bottom panel) bar on android devices 
 system.activate( "multitouch" )                                 -- activate multitouch
+local widget = require("widget")
+widget.setTheme("widget_theme_android_holo_dark")               -- switch widgets on dark theme
 
 composer = require( "composer" )                                -- create a composer object used to control scenes
 composer.recycleOnSceneChange = true                            -- enable auto-recycle on scene change
@@ -25,4 +27,4 @@ math.randomseed(os.time())                                      -- setup global 
 
 
 --composer.gotoScene( "src.scenes.create_game_menu" )                        -- moves to the main scene
-composer.gotoScene( "src.scenes.loading" )
+composer.gotoScene( "src.scenes.test_load_scene" )
