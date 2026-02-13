@@ -24,4 +24,4 @@ composer.isDebug = true                                         -- enable compos
 -- go to main menu scene
 
 
-composer.gotoScene( "src.scenes.create_game_menu", "fade", 2000  )                    -- moves to the main scene
+composer.gotoScene( "src.scenes.create_game_menu" )                        -- moves to the main scene
