@@ -15,45 +15,63 @@ local function applyIslandMask(grid, width, height, landPercent)
     local centerX = width / 2
     local centerY = height / 2
     
-    -- Максимальна дистанція від центру до кута
-    local maxDist = math.sqrt(centerX^2 + centerY^2)
-    
-    -- Переводимо відсотки (80%) у коефіцієнт (0.8)
-    -- Це буде радіус нашого "Плато", де маска = 1.0
-    local plateauRadius = (landPercent or 50) / 100
-    
-    -- Трохи зменшуємо радіус, щоб 100% не впиралось прямо в кути
-    plateauRadius = plateauRadius * 0.85 
+    -- Якщо landPercent = 60, то plateauSize = 0.6.
+    -- Це означає, що 60% радіусу - це чистий шум, а далі йде спад у воду.
+    local plateauSize = (landPercent / 100) 
 
     for x = 1, width do
         for y = 1, height do
-            local dx = x - centerX
-            local dy = y - centerY
-            local dist = math.sqrt(dx^2 + dy^2)
+            local nx = (x - centerX) / (width / 2)
+            local ny = (y - centerY) / (height / 2)
             
-            -- Нормалізована дистанція (0.0 в центрі, 1.0 в кутку)
-            local distNorm = dist / maxDist
+            -- Відстань від центру (0..1)
+            -- Використовуємо трішки "квадратну" відстань для кращого заповнення кутів
+            -- Але для початку звичайна евклідова (коло/еліпс) найнадійніша
+            local dist = math.sqrt(nx*nx + ny*ny)
             
-            local gradient = 1
+            local maskVal = 1.0
             
-            if distNorm > plateauRadius then
-                -- Ми за межами плато, починаємо спуск
-                -- Обчислюємо, скільки місця залишилось до краю (від 0.0 до 1.0)
-                local remainingDist = 1.0 - plateauRadius
-                local posInFade = (distNorm - plateauRadius) / remainingDist
+            if dist > plateauSize then
+                -- Плавний спад
+                local distanceToEdge = (dist - plateauSize) / (1.0 - plateauSize)
+                maskVal = math.cos(distanceToEdge * (math.pi / 2))
                 
-                -- Лінійний спад від 1 до 0
-                gradient = 1 - posInFade
-                
-                -- Робимо спад більш плавним (крива)
-                if gradient < 0 then gradient = 0 end
-                gradient = math.pow(gradient, 2.0) 
+                if dist >= 1.0 then maskVal = 0 end
+                if maskVal < 0 then maskVal = 0 end
             end
-
-            -- Застосовуємо маску
-            grid[x][y].height = grid[x][y].height * gradient
+            
+            -- Множимо висоту на маску
+            grid[x][y].height = grid[x][y].height * maskVal
         end
     end
+end
+
+-- Розтягує діапазон висот на повні 0..1
+local function normalizeGrid(grid, width, height)
+    local minH = 10000
+    local maxH = -10000
+    
+    -- 1. Знаходимо екстремуми
+    for x = 1, width do
+        for y = 1, height do
+            local h = grid[x][y].height
+            if h < minH then minH = h end
+            if h > maxH then maxH = h end
+        end
+    end
+    
+    -- Захист від ділення на нуль
+    if maxH == minH then return end
+    
+    local range = maxH - minH
+    
+    -- 2. Розтягуємо
+    for x = 1, width do
+        for y = 1, height do
+            grid[x][y].height = (grid[x][y].height - minH) / range
+        end
+    end
+    Logger.info("Gen", "Normalized range: " .. string.format("%.2f", minH) .. " .. " .. string.format("%.2f", maxH))
 end
 
 -- Знаходить найнижчого сусіда для клітинки (x, y)
@@ -134,6 +152,71 @@ local function addRiverMoisture(grid, width, height)
     end
 end
 
+local function calculateLakeDepth(grid, width, height)
+    local queue = {}
+    
+    -- 1. Знаходимо "Берегову лінію" озер
+    -- Проходимо по всіх клітинках
+    for x = 1, width do
+        for y = 1, height do
+            local cell = grid[x][y]
+            
+            if cell.isLake then
+                cell.lakeDepth = nil -- Поки що глибина невідома
+                
+                -- Перевіряємо сусідів: чи є поруч СУША?
+                local touchesLand = false
+                local neighbors = {
+                    {x=x+1, y=y}, {x=x-1, y=y}, {x=x, y=y+1}, {x=x, y=y-1}
+                }
+                
+                for _, n in ipairs(neighbors) do
+                    if n.x >= 1 and n.x <= width and n.y >= 1 and n.y <= height then
+                        -- Якщо сусід НЕ вода (значить суша або пляж)
+                        if grid[n.x][n.y].height >= Biomes.SEA_LEVEL then
+                            touchesLand = true
+                            break
+                        end
+                    end
+                end
+                
+                -- Якщо торкається суші - це мілина (глибина 1)
+                if touchesLand then
+                    cell.lakeDepth = 1
+                    table.insert(queue, cell)
+                end
+            end
+        end
+    end
+    
+    -- 2. Розповсюджуємо глибину всередину (BFS)
+    local head = 1
+    while head <= #queue do
+        local current = queue[head]
+        head = head + 1
+        
+        local neighbors = {
+            {x=current.x+1, y=current.y}, {x=current.x-1, y=current.y},
+            {x=current.x, y=current.y+1}, {x=current.x, y=current.y-1}
+        }
+        
+        for _, n in ipairs(neighbors) do
+            if n.x >= 1 and n.x <= width and n.y >= 1 and n.y <= height then
+                local neighbor = grid[n.x][n.y]
+                
+                -- Якщо це озеро і ми ще не виміряли його глибину
+                if neighbor.isLake and neighbor.lakeDepth == nil then
+                    neighbor.lakeDepth = current.lakeDepth + 1
+                    table.insert(queue, neighbor)
+                end
+            end
+        end
+    end
+    
+    -- (Опціонально) Заповнюємо дірки, якщо якісь клітинки залишились nil (наприклад ізольовані в центрі)
+    -- Хоча алгоритм BFS має покрити все.
+end
+
 --------------------------------------------------------------------------------
 -- Публічні методи
 --------------------------------------------------------------------------------
@@ -143,11 +226,12 @@ end
 function WorldGenerator.createGenerationCoroutine(params)
     return coroutine.create(function()
         Logger.info("Gen", "Starting generation pipeline...")
+        
 
         local width = params.width or 50
         local height = params.height or 50
         local seed = params.seed or os.time()
-        local seaLevel = -0.5
+        local seaLevel = Biomes.SEA_LEVEL
         
 
         local landPercent = params.landPercent or 80
@@ -159,7 +243,21 @@ function WorldGenerator.createGenerationCoroutine(params)
 
         local grid = {}
         local stepsDone = 0
+        local mountainScale = scale * 2 -- Гори більш часті
         local totalSteps = width * height * 2 -- Поки що 2 проходи (Висота + Маска)
+
+        Logger.info("GEN", "----GENERATOR PARAMETERS FULL INFO----")
+        Logger.info("GEN", "Width x Height        |  " .. width         .. "x".. height .. "  |")
+        Logger.info("GEN", "Map seed              |  " .. seed          .. "  |")
+        Logger.info("GEN", "Sea level for rivers  |  " .. seaLevel      .. "  |")
+        Logger.info("GEN", "Lend percent          |  " .. landPercent   .. "  |")
+        Logger.info("GEN", "scale                 |  " .. scale         .. "  |")
+        Logger.info("GEN", "octaves               |  " .. octaves       .. "  |")
+        Logger.info("GEN", "persistence           |  " .. persistence   .. "  |")
+        Logger.info("GEN", "mountainScale         |  " .. mountainScale .. "  |")
+        Logger.info("GEN", "totalSteps            |  " .. totalSteps    .. "  |")
+        Logger.info("GEN", "enable Ocean          |  " .. tostring(params.enableOcean)     .. "  |")
+        Logger.info("GEN", "enable Rivers         |  " .. tostring(params.enableRivers)    .. "  |")
 
         -- 1. Ініціалізація та Висота
         Logger.info("Gen", "Step 1: Generating Height Map")
@@ -167,13 +265,14 @@ function WorldGenerator.createGenerationCoroutine(params)
         for x = 1, width do
             grid[x] = {}
             for y = 1, height do
-                local h = Perlin.getFractalNoise_Fast(x, y, seed, octaves, persistence, scale)
-                
+                local baseHeight = Perlin.getFractalNoise_Fast(x, y, seed, octaves, persistence, scale)
+                local mountHeight = Perlin.getFractalNoise_Fast(x, y, seed + 12345, 5, persistence, mountainScale)
+                local finalHeight = baseHeight * 0.6 + mountHeight * 0.4
                 -- Створюємо об'єкт клітинки
                 grid[x][y] = {
                     x = x,
                     y = y,
-                    height = h,
+                    height = finalHeight,
                     moisture = 0,
                     type = "void"
                 }
@@ -190,17 +289,26 @@ function WorldGenerator.createGenerationCoroutine(params)
             end
         end
 
-        -- 2. Маска
+        Logger.info("Gen", "Phase 1.5: Pre-Normalize")
+        normalizeGrid(grid, width, height)
+
+        -- 2 Маска
         if params.enableOcean then
-            Logger.info("Gen", "Phase 2: Island Mask (Size: " .. landPercent .. "%)")
-            
-            -- Передаємо параметр landPercent
+            Logger.info("Gen", "Phase 2: Sculpting Island (Elliptical)")
             applyIslandMask(grid, width, height, landPercent)
-            
-            coroutine.yield({ status = "Shaping Island...", progress = 0.4 })
+            coroutine.yield({ status = "Sculpting...", progress = 0.3 })
         end
 
-        -- 3. Річки (НОВЕ)
+        Logger.info("Gen", "Phase 2.5: Normalizing")
+        normalizeGrid(grid, width, height)
+
+        -- 2.5 КЛАСИФІКАЦІЯ ВОДИ 
+        -- робимо це ДО біомів, щоб знати, де озера
+        Logger.info("Gen", "Phase 3.5: Lake Gradients")
+        calculateLakeDepth(grid, width, height)
+        coroutine.yield({status="Lake Depths...", progress=0.7})
+
+        -- 3. Річки
         if params.enableRivers then
             Logger.info("Gen", "Phase 3: Hydrology")
             local riverCount = params.riverCount or 20
@@ -247,17 +355,16 @@ function WorldGenerator.createGenerationCoroutine(params)
 
         -- 5. БІОМИ (Classification)
         Logger.info("Gen", "Phase 5: Biomes")
-        for x = 1, width do
-            for y = 1, height do
+        for x=1, width do
+            for y=1, height do
                 local cell = grid[x][y]
                 
-                -- Визначаємо біом на основі висоти та вологості
-                cell.biome = Biomes.getBiome(cell.height, cell.moisture)
-                
-                -- Перезаписуємо тип для зручності
-                cell.type = cell.biome.id 
+                cell.biome = Biomes.getBiome(cell.height, cell.moisture, cell.isLake, cell.lakeDepth)
+                cell.type = cell.biome.id
             end
         end
+
+        
 
         coroutine.yield({ status = "Finalizing...", progress = 1.0 })
         return { status = "Done", result = grid }

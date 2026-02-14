@@ -7,7 +7,7 @@ local inputFields = {}
 
 -- Дефолтні параметри
 local defaultParams = {
-    width = "300",
+    width = "-300",
     height = "300",
     seed = tostring(os.time()),
     scale = "80",

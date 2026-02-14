@@ -146,13 +146,15 @@ end
 function scene:show(event)
     if event.phase == "did" then
     local params = inputParams or {
-            width = 200,
-            height = 200,
+            width = 600,
+            height = 500,
             seed = os.time(),
-            scale =80, 
+            scale =60,
+            seaLevel = 0.22, 
+            octaves = 2,
             enableOcean = true,
             enableRivers = true,
-            riverCount = 40,
+            riverCount = 12,
             landPercent = "80"
         }        
         self.genParams = params
