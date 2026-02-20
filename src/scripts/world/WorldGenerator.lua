@@ -152,6 +152,62 @@ local function addRiverMoisture(grid, width, height)
     end
 end
 
+local function smoothBiomeColors(grid, width, height, blurRadius)
+    Logger.info("Gen", "Smoothing biome colors...")
+    local tempColors = {}
+
+    -- 1. Збираємо кольори
+    for x = 1, width do
+        tempColors[x] = {}
+        for y = 1, height do
+            local cell = grid[x][y]
+            
+            -- Якщо це не "ground" (не земля), ми його не змішуємо, залишаємо як є
+            local gameplayType = cell.biome and cell.biome.gameplay or "water"
+            if gameplayType == "ground" or gameplayType == "water" then
+                local r, g, b = 0, 0, 0
+                local count = 0
+                
+                for nx = x - blurRadius, x + blurRadius do
+                    for ny = y - blurRadius, y + blurRadius do
+                        if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                            local nCell = grid[nx][ny]
+                            local nGameplay = nCell.biome and nCell.biome.gameplay or "water"
+                            
+                            -- НАЙГОЛОВНІШЕ: Змішуємо тільки зі "своїм" макро-типом
+                            -- (Вода з водою, Земля з землею)
+                            if nGameplay == gameplayType and nCell.biome and nCell.biome.color then
+                                local c = nCell.biome.color
+                                r = r + c[1]
+                                g = g + c[2]
+                                b = b + c[3]
+                                count = count + 1
+                            end
+                        end
+                    end
+                end
+                
+                if count > 0 then
+                    tempColors[x][y] = { r / count, g / count, b / count }
+                else
+                    tempColors[x][y] = cell.biome.color
+                end
+            else
+                -- Для Пляжів (coast) або Гір (obstacle) залишаємо жорсткий колір
+                tempColors[x][y] = cell.biome.color
+            end
+        end
+    end
+
+    -- 2. Застосовуємо згладжені кольори до сітки
+    for x = 1, width do
+        for y = 1, height do
+            -- Створюємо нову змінну renderColor, щоб не затерти оригінальний biome.color
+            grid[x][y].renderColor = tempColors[x][y]
+        end
+    end
+end
+
 local function calculateLakeDepth(grid, width, height)
     local queue = {}
     
@@ -364,7 +420,10 @@ function WorldGenerator.createGenerationCoroutine(params)
             end
         end
 
-        
+        -- 6. ЗГЛАДЖУВАННЯ КОЛЬОРІВ 
+        -- Передаємо радіус = 1 (змішує 3х3 тайли). Якщо хочеш ще плавніше, постав 2.
+        smoothBiomeColors(grid, width, height, 1)
+        coroutine.yield({status="Smoothing Colors...", progress=0.95})
 
         coroutine.yield({ status = "Finalizing...", progress = 1.0 })
         return { status = "Done", result = grid }

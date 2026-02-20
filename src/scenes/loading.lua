@@ -146,8 +146,8 @@ end
 function scene:show(event)
     if event.phase == "did" then
     local params = inputParams or {
-            width = 600,
-            height = 500,
+            width = 200,
+            height = 100,
             seed = os.time(),
             scale =60,
             seaLevel = 0.22, 
