@@ -2,7 +2,7 @@
 local MapRenderer = {}
 local Logger = require("src.scripts.utils.logger")
 
-local CELL_SIZE = 128
+local CELL_SIZE = 64
 
 -- ==========================================
 -- НАЛАШТУВАННЯ РЕНДЕРУ (ПЕРЕМИКАЧІ ЕТАПІВ)
@@ -22,6 +22,27 @@ local sheetOptions = {
     sheetContentHeight = 544  -- 48 в строці 
 }
 local tilesetSheet = graphics.newImageSheet("src/assets/world/tiles.png", sheetOptions)
+
+local treeSheetOptions = {
+    width = 48,   -- Ширина одного дерева
+    height = 64,  -- Висота одного дерева
+    numFrames = 3 -- Кількість різних дерев у файлі trees.png (зміни на свою)
+}
+local treeSheet = graphics.newImageSheet("src/assets/world/trees.png", treeSheetOptions)
+
+local decorSheetOptions = {
+    width = 16,
+    height = 16,
+    numFrames = 30 
+}
+local decorSheet = graphics.newImageSheet("src/assets/world/decor.png", decorSheetOptions)
+
+--Список кадрів декор
+local DECOR_FRAMES_GRASS = { 1,2,3,4,5,6,7,8,9,10,14,15,16,17,18,19,20,25,26 }
+local DECOR_FRAMES_OBSTACLE = {27,28,29 }
+local DECOR_FRAMES_COAST = {5,6}
+-- НОВЕ: Список кадрів дерев для рандомізації
+local TREE_FRAMES = { 1, 2 }
 
 -- 2. БАЗОВІ ТАЙЛИ
 local BASE_TILES = {
@@ -207,6 +228,71 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                             --table.insert(trashBin, tile)
                         end
                     end
+
+                    if myGameplay == "ground" or myGameplay == "forest" then
+                        
+                        -- Шанс появи декору: 5~15% (густіше/рідше)
+                        if math.random(1, 100) <= 6 then
+                            
+                            local decorFrame = DECOR_FRAMES_GRASS[math.random(1, #DECOR_FRAMES_GRASS)]
+                            
+                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
+                            -- щоб пікселі відповідали масштабу світу
+                            decor_size = CELL_SIZE/math.random(1,2);
+                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
+                            
+                            if decorTile then
+                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+
+                                decorTile.x = decorTile.x + math.random(-8, 8)
+                                mapGroup:insert(decorTile)
+                            end
+                        end
+                    end
+                    if myGameplay == "coast" then
+                        
+                        -- Шанс появи декору: 5~15% (густіше/рідше)
+                        if math.random(1, 100) <= 8 then
+                            
+                            local decorFrame = DECOR_FRAMES_COAST[math.random(1, #DECOR_FRAMES_COAST)]
+                            
+                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
+                            -- щоб пікселі відповідали масштабу світу
+                            decor_size = CELL_SIZE/math.random(1,2);
+                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
+                            
+                            if decorTile then
+                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+
+                                decorTile.x = decorTile.x + math.random(-8, 8)
+                                mapGroup:insert(decorTile)
+                            end
+                        end
+                    end
+
+                    if myGameplay == "obstacle" then
+                        
+                        -- Шанс появи декору: 5~30% (густіше/рідше)
+                        if math.random(1, 100) <= 21 then
+                            
+                            local decorFrame = DECOR_FRAMES_OBSTACLE[math.random(1, #DECOR_FRAMES_OBSTACLE)]
+                            
+                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
+                            -- щоб пікселі відповідали масштабу світу
+                            decor_size = CELL_SIZE/math.random(1,2);
+                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
+                            
+                            if decorTile then
+                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+
+                                mapGroup:insert(decorTile)
+                            end
+                        end
+                    end
+                    
                     
                     tilesProcessed = tilesProcessed + 1
                     if tilesProcessed % 2000 == 0 then
@@ -354,6 +440,28 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
             for y = 1, height do
                 for x = 1, width do
                     local cell = grid[x][y]
+
+                    if getGameplayType(cell) == "forest" then
+                        print( "forest" )
+                        -- Завантажуємо окрему картинку дерева
+                        local tree = display.newImageRect(treeSheet, TREE_FRAMES[math.random(1, #TREE_FRAMES)], 96, 128)
+                        
+                        if tree then
+                            -- Зміщуємо дерева в самий низ (до стовбура)
+                            tree.anchorY = 1 
+                            
+                            -- Ставимо стовбур по центру поточної клітинки
+                            tree.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                            -- Додаємо (CELL_SIZE / 2), щоб стовбур стояв на нижньому краї клітинки
+                            tree.y = math.floor(startY + (y - 1) * CELL_SIZE + (CELL_SIZE / 2))
+                            
+                            -- За бажанням можна трохи рандомізувати відтінок дерева, щоб ліс не був однаковим
+                            local shade = math.random(80, 100) / 100
+                            tree:setFillColor(shade, shade, shade)
+                            
+                            mapGroup:insert(tree)
+                        end
+                    end
                     
                     
                     if getGameplayType(cell) == "obstacle" then
@@ -377,6 +485,7 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                             end
                         end
                     end
+                    
                 end
             end
         end

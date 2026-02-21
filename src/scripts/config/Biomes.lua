@@ -4,7 +4,7 @@ local Biomes = {}
 Biomes.SEA_LEVEL = 0.22
 
 Biomes.GAMEPLAY = {
-    WATER = "water", COAST = "coast", GROUND = "ground", OBSTACLE = "obstacle"
+    WATER = "water", COAST = "coast", GROUND = "ground", OBSTACLE = "obstacle", FOREST = 'forest'
 }
 
 Biomes.TYPES = {
@@ -22,7 +22,7 @@ Biomes.TYPES = {
     SCORCHED           = { id="scorched",   gameplay=Biomes.GAMEPLAY.GROUND, color={45/255, 162/255, 6/255} }, --rgb(45, 162, 6)
     SUBTROPICAL_DESERT = { id="sub_desert", gameplay=Biomes.GAMEPLAY.GROUND, color={45/255, 162/255, 6/255} },
     GRASSLAND          = { id="grassland",  gameplay=Biomes.GAMEPLAY.GROUND, color={26/255, 212/255, 70/255} }, --rgb(26, 212, 70)
-    TROPICAL_RAIN_FOREST={ id="trop_forest",gameplay=Biomes.GAMEPLAY.GROUND, color={22/255, 174/255, 58/255} }, -- rgb(22, 174, 58)
+    TROPICAL_RAIN_FOREST={ id="trop_forest",gameplay=Biomes.GAMEPLAY.FOREST, color={22/255, 174/255, 58/255} }, -- rgb(22, 174, 58)
     
     -- ВИСОЧИНИ
     TEMPERATE_DESERT   = { id="temp_desert", gameplay=Biomes.GAMEPLAY.GROUND, color={19/255, 161/255, 53/255} }, -- rgb(19, 161, 53)
