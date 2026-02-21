@@ -2,7 +2,7 @@
 local MapRenderer = {}
 local Logger = require("src.scripts.utils.logger")
 
-local CELL_SIZE = 64
+local CELL_SIZE = 128
 
 -- ==========================================
 -- НАЛАШТУВАННЯ РЕНДЕРУ (ПЕРЕМИКАЧІ ЕТАПІВ)
@@ -91,15 +91,49 @@ local OVERLAY_TILES = {
     },
 
     obstacle = {
-        N = { },
-        S = {},
-        W = {},
-        E = {},
-        NW = { 14,  96+14, 144+14}, 
-        NE = { 13,  96+13, 144+13 }, 
-        SW = {  }, 
-        SE = {  },
+        -- Звичайні (пласкі) краї для півночі, заходу і сходу
+        N = {parts = {
+                { frame = 48+14, dy = 0 }, -- Верхівка обриву (малюється на самій клітинці)
+                { frame = 96+14, dy = 1 }, -- Вертикальна стіна (на 1 тайл нижче)
+                { frame = 144+14, dy = 2 }  -- Підніжжя скелі, що переходить у землю (на 2 тайли нижче)17
+            } },
+        S = { 14 },     
+        W = { 96+17 }, 
+        E = { 96+16 },
+
+        NW = { parts = {
+                {frame = 48+17, dy = 0},
+                {frame = 192+16, dy = 1},
+                {frame = 192+14, dy = 2}, 
+            } },
+
+        NE = { parts = {
+                {frame = 48+16, dy = 0},
+                {frame = 192+15, dy = 1},
+                {frame = 192+13, dy = 2}, 
+            } },
+        SW = { 17 }, 
+        SE = { 16},
+
+        
+        NE_INNER = { parts = {
+                {frame = 47, dy = 0},
+                {frame = 192+16, dy = 1},
+                {frame = 192+14, dy = 2}, 
+            } },
+
+        NW_INNER = { parts = {
+                {frame = 46, dy = 0},
+                {frame = 192+15, dy = 1},
+                {frame = 192+13, dy = 2}, 
+            } }, 
+        SW_INNER = { 144+7 }, 
+        SE_INNER = { 144+8 }
+        
+        
     }
+        
+        
 }
 
 -- ==========================================
@@ -138,10 +172,12 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
         local totalHeight = height * CELL_SIZE
         
         local tex = graphics.newTexture({ type="canvas", width=totalWidth, height=totalHeight })
+        local mapGroup = display.newGroup()
         
         
-        local startX = -(totalWidth / 2) + (CELL_SIZE / 2)
-        local startY = -(totalHeight / 2) + (CELL_SIZE / 2)
+        -- Жорстко відсікаємо будь-які дробові значення
+        local startX = math.floor(-(totalWidth / 2) + (CELL_SIZE / 2))
+        local startY = math.floor(-(totalHeight / 2) + (CELL_SIZE / 2))
 
         -- ==========================================
         -- ПРОХІД 1: БАЗОВІ ТАЙЛИ
@@ -164,21 +200,22 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                             if cell.renderColor then
                                 tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3])
                             end
-                            tile.x = startX + (x - 1) * CELL_SIZE
-                            tile.y = startY + (y - 1) * CELL_SIZE
-                            tex:draw(tile)
-                            
+                            tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                            tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            mapGroup:insert(tile)
+                            --tex:draw(tile)
+                            --table.insert(trashBin, tile)
                         end
                     end
                     
                     tilesProcessed = tilesProcessed + 1
                     if tilesProcessed % 2000 == 0 then
-                        coroutine.yield({ status = "Pass 1: Base Tiles...", progress = (tilesProcessed / (width * height)) * 0.33 })
+                        --coroutine.yield({ status = "Pass 1: Base Tiles...", progress = (tilesProcessed / (width * height)) * 0.33 })
                     end
                 end
             end
         end
-
+        
         -- ==========================================
         -- ПРОХІД 2: ПЕРЕХОДИ ТА КРАЇ
         -- ==========================================
@@ -193,22 +230,44 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                 return 0, nil
             end
 
-            -- Локальна функція для малювання 1 оверлею (бутерброда або звичайного)
-            local function drawSingleOverlay(x, y, dirKey, refCell)
+            -- Локальна функція для малювання 1 оверлею бутерброда або звичайного
+            local function drawOverlay(x, y, dirKey, refCell)
                 if not refCell then return end
                 local config = getOverlayConfig(refCell, grid[x][y])
                 if not config or not config[dirKey] then return end
                 
                 local overlayData = config[dirKey]
                 
-                if overlayData.base and overlayData.top then
+                -- 1. ПЕРЕВІРКА НА ВЕЛИКІ ГОРИ / СКЕЛІ (parts)
+                if overlayData.parts then
+                    for _, part in ipairs(overlayData.parts) do
+                        
+                        local tile = display.newImageRect(tilesetSheet, part.frame, CELL_SIZE, CELL_SIZE)
+                        if tile then
+                            if refCell.renderColor then 
+                                tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
+                            elseif refCell.biome and refCell.biome.color then 
+                                tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) 
+                            end
+                            
+                            --  Додаємо зсув part.dx та part.dy (і округлюємо для мобільних)
+                            tile.x = math.floor(startX + (x - 1) * CELL_SIZE + (part.dx or 0) * CELL_SIZE)
+                            tile.y = math.floor(startY + (y - 1) * CELL_SIZE + (part.dy or 0) * CELL_SIZE)
+                            
+                            -- Додаємо в групу замість tex:draw
+                            mapGroup:insert(tile)
+                        end
+                    end
+                    
+                -- 2. ПЕРЕВІРКА НА "БУТЕРБРОД" (Два шари на одній клітинці)
+                elseif overlayData.base and overlayData.top then
                     if #overlayData.base > 0 then
                         local baseTile = display.newImageRect(tilesetSheet, overlayData.base[math.random(1, #overlayData.base)], CELL_SIZE, CELL_SIZE)
                         if baseTile then
                             baseTile:setFillColor(0.92, 0.85, 0.6) 
-                            baseTile.x, baseTile.y = startX + (x - 1) * CELL_SIZE, startY + (y - 1) * CELL_SIZE
-                            tex:draw(baseTile)
-                            
+                            baseTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                            baseTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            mapGroup:insert(baseTile)
                         end
                     end
                     if #overlayData.top > 0 then
@@ -216,20 +275,22 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                         if topTile then
                             if refCell.renderColor then topTile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                             elseif refCell.biome and refCell.biome.color then topTile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
-                            topTile.x, topTile.y = startX + (x - 1) * CELL_SIZE, startY + (y - 1) * CELL_SIZE
-                            tex:draw(topTile)
-                            
+                            topTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                            topTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            mapGroup:insert(topTile)
                         end
                     end
+                    
+                -- 3. СТАНДАРТНЕ МАЛЮВАННЯ (Один тайл)
                 else
                     if type(overlayData) == "table" and #overlayData > 0 then
                         local tile = display.newImageRect(tilesetSheet, overlayData[math.random(1, #overlayData)], CELL_SIZE, CELL_SIZE)
                         if tile then
                             if refCell.renderColor then tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                             elseif refCell.biome and refCell.biome.color then tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
-                            tile.x, tile.y = startX + (x - 1) * CELL_SIZE, startY + (y - 1) * CELL_SIZE
-                            tex:draw(tile)
-                            
+                            tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                            tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            mapGroup:insert(tile)
                         end
                     end
                 end
@@ -248,15 +309,15 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                     local isN, isS, isW, isE = layerN > myLayer, layerS > myLayer, layerW > myLayer, layerE > myLayer
                     local drawN, drawS, drawW, drawE = isN, isS, isW, isE
 
-                    if isN and isW then drawSingleOverlay(x, y, "NW_INNER", cellN); drawN, drawW = false, false end
-                    if isN and isE then drawSingleOverlay(x, y, "NE_INNER", cellN); drawN, drawE = false, false end
-                    if isS and isW then drawSingleOverlay(x, y, "SW_INNER", cellS); drawS, drawW = false, false end
-                    if isS and isE then drawSingleOverlay(x, y, "SE_INNER", cellS); drawS, drawE = false, false end
+                    if isN and isW then drawOverlay(x, y, "NW_INNER", cellN); drawN, drawW = false, false end
+                    if isN and isE then drawOverlay(x, y, "NE_INNER", cellN); drawN, drawE = false, false end
+                    if isS and isW then drawOverlay(x, y, "SW_INNER", cellS); drawS, drawW = false, false end
+                    if isS and isE then drawOverlay(x, y, "SE_INNER", cellS); drawS, drawE = false, false end
 
-                    if drawN then drawSingleOverlay(x, y, "N", cellN) end
-                    if drawS then drawSingleOverlay(x, y, "S", cellS) end
-                    if drawW then drawSingleOverlay(x, y, "W", cellW) end
-                    if drawE then drawSingleOverlay(x, y, "E", cellE) end
+                    if drawN then drawOverlay(x, y, "N", cellN) end
+                    if drawS then drawOverlay(x, y, "S", cellS) end
+                    if drawW then drawOverlay(x, y, "W", cellW) end
+                    if drawE then drawOverlay(x, y, "E", cellE) end
 
                     -- 2. Зовнішні кути (Діагоналі)
                     local diagonals = {
@@ -271,14 +332,14 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                             local lAdj1 = safeGetLayer(x + d.adj1.dx, y + d.adj1.dy)
                             local lAdj2 = safeGetLayer(x + d.adj2.dx, y + d.adj2.dy)
                             if lAdj1 < layerDiag and lAdj2 < layerDiag then
-                                drawSingleOverlay(x, y, d.dir, cellDiag)
+                                drawOverlay(x, y, d.dir, cellDiag)
                             end
                         end
                     end
                     
                     tilesProcessed = tilesProcessed + 1
                     if tilesProcessed % 2000 == 0 then
-                        coroutine.yield({ status = "Pass 2: Overlays...", progress = 0.33 + (tilesProcessed / (width * height)) * 0.33 })
+                        --coroutine.yield({ status = "Pass 2: Overlays...", progress = 0.33 + (tilesProcessed / (width * height)) * 0.33 })
                     end
                 end
             end
@@ -287,43 +348,35 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
         -- ==========================================
         -- ПРОХІД 3: ОБ'ЄКТИ ТА ГОРИ (Y-SORTING)
         -- ==========================================
-        local function runPass3_Obstacles()
-            Logger.info("Render", "[Pass 3] Drawing Obstacles (Mountains)...")
-            local tilesProcessed = 0
+        local function runPass3_Objects()
+            Logger.info("Render", "[Pass 3] Drawing Objects and Mountain Bases...")
             
-            -- Йдемо СТРОГО зверху вниз по осі Y
             for y = 1, height do
                 for x = 1, width do
                     local cell = grid[x][y]
                     
+                    
                     if getGameplayType(cell) == "obstacle" then
-                        -- Шукаємо тип гори, або беремо дефолтну ("bare")
-                        local mountainFrames = OBSTACLE_TILES[cell.type] or OBSTACLE_TILES["bare"]
                         
-                        if mountainFrames and #mountainFrames > 0 then
-                            local frame = mountainFrames[math.random(1, #mountainFrames)]
-                            local mountainTile = display.newImageRect(tilesetSheet, frame, CELL_SIZE, CELL_SIZE)
+                        -- Беремо базовий кадр гори 
+                        local mtnFrames = BASE_TILES["obstacle"] 
+                        
+                        if mtnFrames and #mtnFrames > 0 then
+                            local frame = mtnFrames[math.random(1, #mtnFrames)]
+                            local tile = display.newImageRect(tilesetSheet, frame, CELL_SIZE, CELL_SIZE)
                             
-                            if mountainTile then
-                                -- Зазвичай гори не фарбують, але якщо треба:
+                            if tile then
                                 if cell.renderColor then
-                                    mountainTile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3])
+                                    tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3])
                                 end
                                 
-                                mountainTile.x = startX + (x - 1) * CELL_SIZE
-                                mountainTile.y = startY + (y - 1) * CELL_SIZE
-                                tex:draw(mountainTile)
+                                tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
+                                tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
                                 
+                                mapGroup:insert(tile)
                             end
                         end
                     end
-                    
-                    tilesProcessed = tilesProcessed + 1
-                end
-                
-                -- Викликаємо yield по завершенню кожного рядка Y (щоб графіка не фрізила)
-                if y % 10 == 0 then
-                    coroutine.yield({ status = "Pass 3: Mountains...", progress = 0.66 + (y / height) * 0.34 })
                 end
             end
         end
@@ -333,14 +386,17 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
         -- ==========================================
         if RENDER_STAGES.baseTiles   then runPass1_BaseTiles() end
         if RENDER_STAGES.transitions then runPass2_Transitions() end
-        if RENDER_STAGES.obstacles   then runPass3_Obstacles() end
+        if RENDER_STAGES.obstacles   then runPass3_Objects() end
 
         -- Збираємо текстуру і віддаємо
+        tex:draw(mapGroup)
         tex:invalidate()
-        local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
-        mapImage.x = display.contentCenterX
-        mapImage.y = display.contentCenterY
+        coroutine.yield({ status = "Finalizing GPU render...", progress = 0.99 })
         
+        local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
+        -- Центр екрану на телефонах часто дробовий, округлюємо його
+        mapImage.x = math.floor(display.contentCenterX)
+        mapImage.y = math.floor(display.contentCenterY)
         Logger.info("Render", "Render Complete!")
         return { status = "Done", result = mapImage }
     end)

@@ -18,6 +18,8 @@ native.setProperty( "androidSystemUiVisibility", "immersive" )  -- hide navigati
 system.activate( "multitouch" )                                 -- activate multitouch
 local widget = require("widget")
 widget.setTheme("widget_theme_android_holo_dark")               -- switch widgets on dark theme
+display.setDefault("magTextureFilter", "nearest")
+display.setDefault("minTextureFilter", "nearest")
 
 composer = require( "composer" )                                -- create a composer object used to control scenes
 composer.recycleOnSceneChange = true                            -- enable auto-recycle on scene change
