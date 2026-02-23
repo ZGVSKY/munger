@@ -32,8 +32,8 @@ Biomes.TYPES = {
 
     -- ГОРИ
     BARE               = { id="bare",       gameplay=Biomes.GAMEPLAY.OBSTACLE, color={0.5, 0.5, 0.5} },
-    TUNDRA             = { id="tundra",     gameplay=Biomes.GAMEPLAY.OBSTACLE,   color={0.7, 0.7, 0.65} },
-    SNOW               = { id="snow",       gameplay=Biomes.GAMEPLAY.OBSTACLE, color={0.95, 0.95, 1.0} },
+    TUNDRA             = { id="tundra",     gameplay=Biomes.GAMEPLAY.OBSTACLE,   color={0.5, 0.5, 0.5} },
+    SNOW               = { id="snow",       gameplay=Biomes.GAMEPLAY.OBSTACLE, color={0.5, 0.5, 0.5} },
 }
 
 

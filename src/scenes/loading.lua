@@ -121,7 +121,7 @@ local function onFrame(event)
                 
                 -- Ініціалізуємо камеру MAS
                 -- mapImage вже знаходиться в scene.tempMapGroup
-                local cameraGroup = MAS:init(scene.tempMapGroup)
+                local cameraGroup = MAS:init(mapImage)
                 scene.view:insert(cameraGroup)
                 
                 cameraGroup.x = display.contentCenterX

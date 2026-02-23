@@ -98,36 +98,122 @@ local function getLowestNeighbor(grid, x, y, width, height)
     return lowestCell
 end
 
--- Генерація однієї річки
+-- Нова функція для прокладання шляху річки "слегка випишва капля летнього дождя"
 local function traceRiver(grid, startX, startY, width, height, seaLevel)
     local curr = grid[startX][startY]
+    local path = {}
     local pathLength = 0
+    local visited = {}
     
-    -- Річка тече поки не впаде в море або в яму
+    local prevDx, prevDy = 0, 0 -- Для інерції (щоб річка плавно звивалась)
+
+    --  Шукаємо шлях до моря 
     while true do
-        curr.isRiver = true
+        table.insert(path, curr)
+        visited[curr.x .. "," .. curr.y] = true
         pathLength = pathLength + 1
 
-        -- Якщо дійшли до моря - кінець річки
-        if curr.height < seaLevel then
+        -- Зупиняємось, якщо дійшли до моря або річка занадто довга
+        if curr.height <= seaLevel or pathLength > 250 then
             break
         end
 
-        local nextCell = getLowestNeighbor(grid, curr.x, curr.y, width, height)
+        -- Шукаємо сусідів, які нижче або на тому ж рівні
+        local candidates = {}
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                if not (dx == 0 and dy == 0) then
+                    local nx, ny = curr.x + dx, curr.y + dy
+                    if nx > 0 and nx <= width and ny > 0 and ny <= height then
+                        local nCell = grid[nx][ny]
+                        -- Перевіряємо, щоб вода текла вниз і не йшла по колу
+                        if nCell.height <= curr.height and not visited[nx .. "," .. ny] then
+                            table.insert(candidates, {cell = nCell, dx = dx, dy = dy})
+                        end
+                    end
+                end
+            end
+        end
 
-        if nextCell then
-            -- Вода тече далі
-            curr = nextCell
-            -- Захист від зациклення (дуже довгі річки)
-            if pathLength > 200 then break end
-        else
-            -- Немає куди текти (Яма) -> Створюємо Озеро
-            curr.isLake = true
-            -- Можна розширити озеро на сусідів, але поки 1 клітинка
-            break 
+        if #candidates == 0 then
+            curr.isLake = true -- Яма -> Створюємо Озеро
+            break
+        end
+
+        -- Вибираємо найкращого сусіда з урахуванням нахилу, інерції та випадковості
+        local bestScore = -9999
+        local nextCell = nil
+        local nextDx, nextDy = 0, 0
+
+        for _, cand in ipairs(candidates) do
+            -- Нахил чим стрімкіше вниз, тим краще
+            local drop = (curr.height - cand.cell.height) * 10
+            local score = drop
+            
+            -- Інерція 
+            if prevDx ~= 0 or prevDy ~= 0 then
+                local dotProduct = (cand.dx * prevDx) + (cand.dy * prevDy)
+                score = score + (dotProduct * 0.5) 
+            end
+            
+            -- Додаємо випадковий шум для органічних вигинів
+            score = score + (math.random() * 1.5)
+
+            if score > bestScore then
+                bestScore = score
+                nextCell = cand.cell
+                nextDx = cand.dx
+                nextDy = cand.dy
+            end
+        end
+
+        curr = nextCell
+        prevDx, prevDy = nextDx, nextDy
+    end
+
+    -- Малюємо річку змінної ширини 
+    local totalLength = #path
+    if totalLength < 5 then return end -- Ігноруємо надто короткі струмочки
+
+    for i, cell in ipairs(path) do
+        -- Прогрес від 0.0 (витік) до 1.0 (гирло)
+        local progress = i / totalLength
+        
+        -- math.sin дає дугу: 0 на старті, 1 в центрі, 0 в кінці.
+        -- Базовий радіус 0.5 (1 тайл), плюс потовщення до +1.5 тайла в центрі.
+        local progress = i / totalLength
+        
+        -- Радіус самої води
+        local idealRadius = 1 + math.sin(progress * math.pi) * 1.5
+        local noise = math.random(-30, 30) / 100.0
+        local waterRadius = math.max(0.5, idealRadius + noise)
+        
+        -- Радіус ДОЛИНИ (на 2 тайли ширше за воду)
+        local valleyRadius = waterRadius + 2.0 
+        
+        local vInt = math.ceil(valleyRadius)
+
+        -- Зафарбовуємо коло (екскаватор тепер більший)
+        for dx = -vInt, vInt do
+            for dy = -vInt, vInt do
+                local distSq = dx*dx + dy*dy
+                local nx, ny = cell.x + dx, cell.y + dy
+                
+                if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                    -- Якщо ми всередині радіусу води
+                    if distSq <= waterRadius * waterRadius then
+                        grid[nx][ny].isRiver = true
+                    
+                    -- Якщо ми ЗА межами води, але в межах долини
+                    elseif distSq <= valleyRadius * valleyRadius then
+                        grid[nx][ny].isValley = true
+                    end
+                end
+            end
         end
     end
 end
+
 
 -- Додає вологість навколо річок та озер
 local function addRiverMoisture(grid, width, height)
@@ -273,6 +359,161 @@ local function calculateLakeDepth(grid, width, height)
     -- Хоча алгоритм BFS має покрити все.
 end
 
+-- =========================================================
+-- ФУНКЦІЯ 1: Гарантує, що берег має ширину мінімум 1 тайл
+-- (Логіка: Вода, яка торкається трави, стає піском)
+-- =========================================================
+local function enforceCoastlines(grid, width, height)
+    Logger.info("Gen", "Enforcing coastlines (Water to Sand, 8-way)...")
+    local waterToSand = {}
+
+    for x = 1, width do
+        for y = 1, height do
+            local cell = grid[x][y]
+            
+            -- Тепер ми шукаємо ТІЛЬКИ воду
+            if cell.biome.gameplay == "water" then
+                local touchesGrass = false
+                
+                -- Перевіряємо всі 8 напрямків (включно з діагоналями)
+                local neighbors = { 
+                    {-1, -1}, {0, -1}, {1, -1},
+                    {-1,  0},          {1,  0},
+                    {-1,  1}, {0,  1}, {1,  1} 
+                }
+                
+                for _, dir in ipairs(neighbors) do
+                    local nx, ny = x + dir[1], y + dir[2]
+                    
+                    if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                        local neighborGameplay = grid[nx][ny].biome.gameplay
+                        -- Якщо вода бачить поруч із собою траву або ліс
+                        if neighborGameplay == "ground" or neighborGameplay == "forest" then
+                            touchesGrass = true
+                            break
+                        end
+                    end
+                end
+                
+                -- Якщо вода торкається зелені, записуємо її в чергу на перетворення
+                if touchesGrass then
+                    table.insert(waterToSand, cell)
+                end
+            end
+        end
+    end
+
+    -- Одночасно перетворюємо всю знайдену воду на пісок
+    -- (Це наростить ідеальний пляж на 1 тайл у бік океану)
+    for _, cell in ipairs(waterToSand) do
+        -- Висота 0.1 відповідає береговій лінії (coast)
+        cell.biome = Biomes.getBiome(0.27, cell.moisture, false, nil)
+        cell.type = cell.biome.id
+    end
+end
+
+-- =========================================================
+-- ФУНКЦІЯ 2: Контроль розміру кластерів (Лісів та Гір)
+-- =========================================================
+local function controlClusterSizes(grid, width, height, targetType, minSize, maxSize)
+    Logger.info("Gen", "Smoothing clusters for: " .. targetType)
+    local visited = {}
+    
+    for x = 1, width do
+        for y = 1, height do
+            -- Якщо знайшли потрібний біом і ще не перевіряли його
+            if grid[x][y].biome.gameplay == targetType and not visited[x..","..y] then
+                
+                -- 1. Знаходимо весь кластер (Flood Fill)
+                local cluster = {}
+                local queue = {grid[x][y]}
+                local head = 1
+                visited[x..","..y] = true
+                
+                while head <= #queue do
+                    local curr = queue[head]
+                    head = head + 1
+                    table.insert(cluster, curr)
+                    
+                    -- Перевіряємо 4 напрямки (хрестом)
+                    local neighbors = { {1,0}, {-1,0}, {0,1}, {0,-1} }
+                    for _, dir in ipairs(neighbors) do
+                        local nx, ny = curr.x + dir[1], curr.y + dir[2]
+                        if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                            if grid[nx][ny].biome.gameplay == targetType and not visited[nx..","..ny] then
+                                visited[nx..","..ny] = true
+                                table.insert(queue, grid[nx][ny])
+                            end
+                        end
+                    end
+                end
+                
+                -- 2. ВИДАЛЕННЯ: Якщо кластер замалий
+                if #cluster < minSize then
+                    for _, cell in ipairs(cluster) do
+                        -- Перетворюємо на звичайну траву
+                        cell.biome = Biomes.getBiome(0.4, cell.moisture, false, nil)
+                        cell.type = cell.biome.id
+                    end
+                
+                -- 3. ЕРОЗІЯ: Якщо кластер завеликий
+                elseif #cluster > maxSize then
+                    local toRemove = #cluster - maxSize
+                    local edgeQueue = {}
+                    local isEdge = {}
+                    
+                    -- Знаходимо крайні тайли кластера (ті, що торкаються інших біомів)
+                    for _, cell in ipairs(cluster) do
+                        local hasOuterNeighbor = false
+                        local neighbors = { {1,0}, {-1,0}, {0,1}, {0,-1} }
+                        for _, dir in ipairs(neighbors) do
+                            local nx, ny = cell.x + dir[1], cell.y + dir[2]
+                            if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                                if grid[nx][ny].biome.gameplay ~= targetType then
+                                    hasOuterNeighbor = true
+                                    break
+                                end
+                            end
+                        end
+                        if hasOuterNeighbor then
+                            table.insert(edgeQueue, cell)
+                            isEdge[cell.x..","..cell.y] = true
+                        end
+                    end
+                    
+                    -- Акуратно "відкушуємо" крайні тайли, рухаючись всередину
+                    local removedCount = 0
+                    local eqHead = 1
+                    
+                    while removedCount < toRemove and eqHead <= #edgeQueue do
+                        local curr = edgeQueue[eqHead]
+                        eqHead = eqHead + 1
+                        
+                        -- Перетворюємо крайній тайл на траву
+                        curr.biome = Biomes.getBiome(0.4, curr.moisture, false, nil)
+                        curr.type = curr.biome.id
+                        removedCount = removedCount + 1
+                        
+                        -- Додаємо внутрішніх сусідів у чергу на видалення (вони тепер стали краєм)
+                        local neighbors = { {1,0}, {-1,0}, {0,1}, {0,-1} }
+                        for _, dir in ipairs(neighbors) do
+                            local nx, ny = curr.x + dir[1], curr.y + dir[2]
+                            if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                                local nCell = grid[nx][ny]
+                                if nCell.biome.gameplay == targetType and not isEdge[nx..","..ny] then
+                                    isEdge[nx..","..ny] = true
+                                    table.insert(edgeQueue, nCell)
+                                end
+                            end
+                        end
+                    end
+                end
+                
+            end
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Публічні методи
 --------------------------------------------------------------------------------
@@ -414,11 +655,41 @@ function WorldGenerator.createGenerationCoroutine(params)
         for x=1, width do
             for y=1, height do
                 local cell = grid[x][y]
-                
+
                 cell.biome = Biomes.getBiome(cell.height, cell.moisture, cell.isLake, cell.lakeDepth)
+                
+                if cell.isValley and cell.biome.gameplay == "obstacle" then
+                    -- Примусово робимо її рівниною (беремо висоту 0.4 - це зазвичай трава/ліс)
+                    -- Можеш також просто хардкодити сюди біом трави, якщо хочеш
+                    cell.biome = Biomes.getBiome(0.31, 0.16, false, nil)
+                end
+
                 cell.type = cell.biome.id
+                if cell.isRiver and cell.height >= seaLevel then
+                    cell.biome = {
+                        id = "river",
+                        gameplay = "river",
+                        color = {0.2, 0.6, 0.8}
+                    }
+                    cell.type = "river"
+                end
             end
         end
+
+        Logger.info("Gen", "Phase 5.5: Post-Processing Shapes")
+        
+        -- 1. Робимо береги шириною мінімум 1 тайл
+        
+        
+        -- 2. Контролюємо ліси: мінімум 6 тайлів, максимум 40 (заміни на свої M і N)
+        --controlClusterSizes(grid, width, height, "forest", 1, 10)
+        
+        -- 3. Контролюємо гори: мінімум 9 тайлів, максимум 60
+        --controlClusterSizes(grid, width, height, "obstacle", 9, 60)
+
+        enforceCoastlines(grid, width, height)
+        
+        coroutine.yield({status="Post-Processing...", progress=0.92})
 
         -- 6. ЗГЛАДЖУВАННЯ КОЛЬОРІВ 
         -- Передаємо радіус = 1 (змішує 3х3 тайли). Якщо хочеш ще плавніше, постав 2.
