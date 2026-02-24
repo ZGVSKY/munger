@@ -303,6 +303,7 @@ function touch(self, e)
                 updateTracking( rect.prevCentre, rect.dots )
             end
         end
+        
         return true
     end
 
@@ -325,6 +326,27 @@ function MAS:start(group)
     group.touch = touch
     -- listen for touches starting on the touch object
     group:addEventListener("touch")
+
+    group._mouseListener = function(event)
+        if event.type == "scroll" then
+            -- event.scrollY показує напрямок прокрутки (вгору або вниз)
+            -- 0.1 - це швидкість зуму. Можеш зробити її більшою/меншою
+            local zoomFactor = event.scrollY * 0.001
+            
+            local newScale = group.xScale + zoomFactor
+            
+            -- Ставимо базовий запобіжник від вивороту навиворіт (від'ємного скейлу)
+            if newScale > 0.1 then
+                group.xScale = newScale
+                group.yScale = newScale
+            end
+            
+            return true
+        end
+    end
+    
+    -- Вішаємо на Runtime, щоб колесо працювало будь-де на екрані
+    Runtime:addEventListener("mouse", group._mouseListener)
     
 end
 
