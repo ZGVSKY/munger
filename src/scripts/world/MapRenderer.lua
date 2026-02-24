@@ -1,50 +1,40 @@
 -- src/scripts/view/MapRenderer.lua
 local MapRenderer = {}
 local Logger = require("src.scripts.utils.logger")
+local WorldConfig = require("src.scripts.config.WorldConfig")
 
-local CELL_SIZE = 64
+-- ОПТИМІЗАЦІЯ: Локальне кешування математичних функцій (дуже прискорює цикли в Lua)
+local mFloor = math.floor
+local mRand = math.random
 
 -- ==========================================
--- НАЛАШТУВАННЯ РЕНДЕРУ (ПЕРЕМИКАЧІ ЕТАПІВ)
+-- 1. НАЛАШТУВАННЯ ТАЙЛСЕТІВ (Залишаємо як було)
 -- ==========================================
-local RENDER_STAGES = {
-    baseTiles   = true,  -- Етап 1: Плоска земля та вода
-    transitions = true,  -- Етап 2: Берегові лінії, накладення, кути
-    obstacles   = true   -- Етап 3: Високі об'єкти (Гори, Дерева з Y-сортуванням)
-}
-
--- 1. НАЛАШТУВАННЯ ТАЙЛСЕТУ
 local sheetOptions = {
-    width = 32,
-    height = 32,
+    width = 32, height = 32,
     numFrames = 816, 
-    sheetContentWidth = 1536, 
-    sheetContentHeight = 544  -- 48 в строці 
+    sheetContentWidth = 1536, sheetContentHeight = 544 
 }
 local tilesetSheet = graphics.newImageSheet("src/assets/world/tiles.png", sheetOptions)
 
 local treeSheetOptions = {
-    width = 48,   -- Ширина одного дерева
-    height = 64,  -- Висота одного дерева
-    numFrames = 3 -- Кількість різних дерев у файлі trees.png (зміни на свою)
+    width = 48, height = 64, numFrames = 3
 }
 local treeSheet = graphics.newImageSheet("src/assets/world/trees.png", treeSheetOptions)
 
 local decorSheetOptions = {
-    width = 16,
-    height = 16,
-    numFrames = 30 
+    width = 16, height = 16, numFrames = 30 
 }
 local decorSheet = graphics.newImageSheet("src/assets/world/decor.png", decorSheetOptions)
 
---Список кадрів декор
 local DECOR_FRAMES_GRASS = { 1,2,3,4,5,6,7,8,9,10,14,15,16,17,18,19,20,25,26 }
 local DECOR_FRAMES_OBSTACLE = {27,28,29 }
 local DECOR_FRAMES_COAST = {5,6}
--- НОВЕ: Список кадрів дерев для рандомізації
 local TREE_FRAMES = { 1, 2, 3 }
 
--- 2. БАЗОВІ ТАЙЛИ
+-- ==========================================
+-- 2. БАЗОВІ ТАЙЛИ ТА ІЄРАРХІЯ
+-- ==========================================
 local BASE_TILES = {
     ground    = { 720+1, 720+2, 720+3, 720+4, 720+5, 720+6, 720+7, 720+8, 720+9, 720+10 },
     coast     = { 768+1, 768+2, 768+3, 768+4, 768+5, 768+6, 768+7, 768+8, 768+9, 768+10, 768+11, 768+12, 768+13, 768+14, 768+15, 768+16, 768+17, 768+18 },
@@ -53,12 +43,6 @@ local BASE_TILES = {
     water     = { 720+11 },
     river     = { 720+11 },
     obstacle  = { 720+12 } 
-}
-
--- НОВЕ: Графіка для Гір
-local OBSTACLE_TILES = {
-    bare = { 22 }, 
-    snow = { 22 }, 
 }
 
 local LAYER_PRIORITY = {
@@ -72,17 +56,17 @@ local LAYER_PRIORITY = {
 
 local OVERLAY_TILES = {
     ground = {
-        N = { 2, 48+2, 96+2, 144+2, 192+2, 240+2 },-- перший, другий,третій,четвертий,пятий,шостий ряди
+        N = { 2, 48+2, 96+2, 144+2, 192+2, 240+2 },
         S = { 1, 48+1, 96+1, 144+1, 192+1, 240+1 },
         W = { 5, 48+5, 96+5, 144+5, 192+5, 240+5 },
         E = { 6, 48+6, 96+6, 144+6, 192+6, 240+6 },
-        NW = { 336+2, 336+4, 336+6 }, -- 8 ряд
+        NW = { 336+2, 336+4, 336+6 }, 
         NE = { 336+1, 336+3, 336+5 }, 
-        SW = { 288+2, 288+4, 288+6 }, --верхнє 7 ряд
+        SW = { 288+2, 288+4, 288+6 }, 
         SE = { 288+1, 288+3, 288+5 },
         NW_INNER = { 7, 9, 11 }, 
-        NE_INNER = { 8, 10, 12 }, --верхнє
-        SW_INNER = { 48+7,48+ 9, 48+11 }, 
+        NE_INNER = { 8, 10, 12 }, 
+        SW_INNER = { 48+7, 48+9, 48+11 }, 
         SE_INNER = { 48+8, 48+10, 48+12 }
     },
     ground_over_water = {
@@ -91,18 +75,17 @@ local OVERLAY_TILES = {
         W =  { base = { 3, 48+3, 96+3, 144+3 }, top = { 48+5 } },
         E =  { base = { 4, 48+4, 96+4, 144+4 }, top = { 48+6 } },
         NW = { base = { 432+4 }, top = { 336+6 } },
-        NE = { base = { 432+3  }, top = { 336+5 } },
+        NE = { base = { 432+3 }, top = { 336+5 } },
         SW = { base = { 384+2, 384+4 }, top = { 288+6 } },
         SE = { base = { 384+1, 384+3 }, top = { 288+5 } },
-        NW_INNER = { base = { 96+7, 96+9, 96+11 }, top = { 7 } }, -- 11 12 48+11 48+12
+        NW_INNER = { base = { 96+7, 96+9, 96+11 }, top = { 7 } }, 
         NE_INNER = { base = { 96+8, 96+10, 96+12 }, top = { 8 } },
-        SW_INNER = { base = { 144+7,144+ 9, 144+11 }, top = { 48+7 } },
+        SW_INNER = { base = { 144+7, 144+9, 144+11 }, top = { 48+7 } },
         SE_INNER = { base = { 144+8, 144+10, 144+12 }, top = { 48+8 } },
     },
-
     coast = {
         N = { 240+9, 240+10, 240+11, 240+12 },
-        S = {  192+9, 192+10, 192+11, 192+12}, 
+        S = { 192+9, 192+10, 192+11, 192+12 }, 
         W = { 3, 48+3, 96+3, 144+3 }, 
         E = { 4, 48+4, 96+4, 144+4 },
         NW = { 432+2, 432+4 }, 
@@ -111,54 +94,23 @@ local OVERLAY_TILES = {
         SE = { 384+1, 384+3 },
         NW_INNER = { 96+7, 96+9, 96+11 }, 
         NE_INNER = { 96+8, 96+10, 96+12 }, 
-        SW_INNER = { 144+7,144+ 9, 144+11 }, 
+        SW_INNER = { 144+7, 144+9, 144+11 }, 
         SE_INNER = { 144+8, 144+10, 144+12 }
     },
-
     obstacle = {
-        -- Звичайні (пласкі) краї для півночі, заходу і сходу
-        N = {parts = {
-                { frame = 48+14, dy = 0 }, -- Верхівка обриву (малюється на самій клітинці)
-                { frame = 96+14, dy = 1 }, -- Вертикальна стіна (на 1 тайл нижче)
-                { frame = 144+14, dy = 2 }  -- Підніжжя скелі, що переходить у землю (на 2 тайли нижче)17
-            } },
+        N = { parts = { { frame = 48+14, dy = 0 }, { frame = 96+14, dy = 1 }, { frame = 144+14, dy = 2 } } },
         S = { 14 },     
         W = { 96+17 }, 
         E = { 96+16 },
-
-        NW = { parts = {
-                {frame = 48+17, dy = 0},
-                {frame = 192+16, dy = 1},
-                {frame = 192+14, dy = 2}, 
-            } },
-
-        NE = { parts = {
-                {frame = 48+16, dy = 0},
-                {frame = 192+15, dy = 1},
-                {frame = 192+13, dy = 2}, 
-            } },
+        NW = { parts = { {frame = 48+17, dy = 0}, {frame = 192+16, dy = 1}, {frame = 192+14, dy = 2} } },
+        NE = { parts = { {frame = 48+16, dy = 0}, {frame = 192+15, dy = 1}, {frame = 192+13, dy = 2} } },
         SW = { 17 }, 
         SE = { 16},
-
-        
-        NE_INNER = { parts = {
-                {frame = 47, dy = 0},
-                {frame = 192+16, dy = 1},
-                {frame = 192+14, dy = 2}, 
-            } },
-
-        NW_INNER = { parts = {
-                {frame = 46, dy = 0},
-                {frame = 192+15, dy = 1},
-                {frame = 192+13, dy = 2}, 
-            } }, 
+        NE_INNER = { parts = { {frame = 47, dy = 0}, {frame = 192+16, dy = 1}, {frame = 192+14, dy = 2} } },
+        NW_INNER = { parts = { {frame = 46, dy = 0}, {frame = 192+15, dy = 1}, {frame = 192+13, dy = 2} } }, 
         SW_INNER = { 144+7 }, 
         SE_INNER = { 144+8 }
-        
-        
     }
-        
-        
 }
 
 -- ==========================================
@@ -178,26 +130,14 @@ local function getOverlayConfig(neighborCell, myCell)
     if not neighborCell or not myCell then return nil end
     local nGameplay = getGameplayType(neighborCell)
     local myGameplay = getGameplayType(myCell)
-    if nGameplay == "ground" and myGameplay == "water" then
-        return OVERLAY_TILES["ground_over_water"]
-    end
-    if nGameplay == "ground" and myGameplay == "river" then
-        return OVERLAY_TILES["ground_over_water"]
-    end
-
-    if nGameplay == "forest" and myGameplay == "river" then
-        return OVERLAY_TILES["ground_over_water"]
-    end
-    if nGameplay == "forest" and myGameplay == "coast" then
-        return OVERLAY_TILES["ground"]
-    end
-    if nGameplay == "forest" and myGameplay == "water" then
-        return OVERLAY_TILES["ground_over_water"]
-    end
-    if nGameplay == "forest" and myGameplay == "ground" then
-        return OVERLAY_TILES["ground"]
-    end
     
+    if nGameplay == "ground" and (myGameplay == "water" or myGameplay == "river") then
+        return OVERLAY_TILES["ground_over_water"]
+    end
+    if nGameplay == "forest" then
+        if myGameplay == "river" or myGameplay == "water" then return OVERLAY_TILES["ground_over_water"] end
+        if myGameplay == "coast" or myGameplay == "ground" then return OVERLAY_TILES["ground"] end
+    end
     if neighborCell.biome.id == "scorched" and myGameplay == "ground" then
         return OVERLAY_TILES["ground"]
     end
@@ -206,135 +146,87 @@ local function getOverlayConfig(neighborCell, myCell)
 end
 
 -- ==========================================
--- ГОЛОВНА ФУНКЦІЯ РЕНДЕРУ
+-- ГОЛОВНА ФУНКЦІЯ РЕНДЕРУ 
 -- ==========================================
-function MapRenderer.createRenderCoroutine(grid, parentGroup)
+function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
     return coroutine.create(function()
         Logger.info("Render", "Starting Multi-Pass Map Rendering...")
         
-        local width = #grid
-        local height = #grid[1]
-        local totalWidth = width * CELL_SIZE
-        local totalHeight = height * CELL_SIZE
+        local config = customConfig or WorldConfig
+        local cellSize = config.CELL_SIZE
+        local width = config.MAP_WIDTH
+        local height = config.MAP_HEIGHT
+        
+        local totalWidth = width * cellSize
+        local totalHeight = height * cellSize
         
         local tex = graphics.newTexture({ type="canvas", width=totalWidth, height=totalHeight })
         local overLayerGroupTex = graphics.newTexture({ type="canvas", width=totalWidth, height=totalHeight })
+        
         local mapGroup = display.newGroup()
         local overLayerGroup = display.newGroup()
         
-        
-        -- Жорстко відсікаємо будь-які дробові значення
-        local startX = math.floor(-(totalWidth / 2) + (CELL_SIZE / 2))
-        local startY = math.floor(-(totalHeight / 2) + (CELL_SIZE / 2))
+        local startX = mFloor(-(totalWidth / 2) + (cellSize / 2))
+        local startY = mFloor(-(totalHeight / 2) + (cellSize / 2))
 
-        -- ==========================================
         -- ПРОХІД 1: БАЗОВІ ТАЙЛИ
-        -- ==========================================
-        local function runPass1_BaseTiles()
+        if config.RENDER.stages.baseTiles then
             Logger.info("Render", "[Pass 1] Drawing Base Tiles...")
-            local tilesProcessed = 0
-            
             for y = 1, height do
                 for x = 1, width do
                     local cell = grid[x][y]
                     local myGameplay = getGameplayType(cell)
                     
+                    local cx = mFloor(startX + (x - 1) * cellSize)
+                    local cy = mFloor(startY + (y - 1) * cellSize)
+                    
                     local baseFrames = BASE_TILES[myGameplay]
                     if baseFrames and #baseFrames > 0 then
-                        local frame = baseFrames[math.random(1, #baseFrames)]
-                        local tile = display.newImageRect(tilesetSheet, frame, CELL_SIZE, CELL_SIZE)
-                        
+                        local tile = display.newImageRect(tilesetSheet, baseFrames[mRand(1, #baseFrames)], cellSize, cellSize)
                         if tile then
-                            if cell.renderColor then
-                                tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3])
-                            end
-                            tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                            tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            if cell.renderColor then tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3]) end
+                            tile.x, tile.y = cx, cy
                             mapGroup:insert(tile)
-                            --tex:draw(tile)
-                            --table.insert(trashBin, tile)
                         end
                     end
 
+                    -- ДЕКОРАЦІЇ
                     if myGameplay == "ground" or myGameplay == "forest" then
-                        
-                        -- Шанс появи декору: 5~15% (густіше/рідше)
-                        if math.random(1, 100) <= 6 then
-                            
-                            local decorFrame = DECOR_FRAMES_GRASS[math.random(1, #DECOR_FRAMES_GRASS)]
-                            
-                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
-                            -- щоб пікселі відповідали масштабу світу
-                            decor_size = CELL_SIZE/math.random(1,2);
-                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
-                            
+                        if mRand(1, 100) <= config.RENDER.decorChances.grass then
+                            local decor_size = cellSize / mRand(1, 2)
+                            local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_GRASS[mRand(1, #DECOR_FRAMES_GRASS)], decor_size, decor_size)
                             if decorTile then
-                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
-
-                                decorTile.x = decorTile.x + math.random(-8, 8)
+                                decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
                                 mapGroup:insert(decorTile)
                             end
                         end
-                    end
-                    if myGameplay == "coast" then
-                        
-                        -- Шанс появи декору: 5~15% (густіше/рідше)
-                        if math.random(1, 100) <= 8 then
-                            
-                            local decorFrame = DECOR_FRAMES_COAST[math.random(1, #DECOR_FRAMES_COAST)]
-                            
-                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
-                            -- щоб пікселі відповідали масштабу світу
-                            decor_size = CELL_SIZE/math.random(1,2);
-                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
-                            
+                    elseif myGameplay == "coast" then
+                        if mRand(1, 100) <= config.RENDER.decorChances.coast then
+                            local decor_size = cellSize / mRand(1, 2)
+                            local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_COAST[mRand(1, #DECOR_FRAMES_COAST)], decor_size, decor_size)
                             if decorTile then
-                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
-
-                                decorTile.x = decorTile.x + math.random(-8, 8)
+                                decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
                                 mapGroup:insert(decorTile)
                             end
                         end
-                    end
-
-                    if myGameplay == "obstacle" then
-                        
-                        -- Шанс появи декору: 5~30% (густіше/рідше)
-                        if math.random(1, 100) <= 21 then
-                            
-                            local decorFrame = DECOR_FRAMES_OBSTACLE[math.random(1, #DECOR_FRAMES_OBSTACLE)]
-                            
-                            -- Розтягуємо 16х16 до розміру нашої клітинки (CELL_SIZE), 
-                            -- щоб пікселі відповідали масштабу світу
-                            decor_size = CELL_SIZE/math.random(1,2);
-                            local decorTile = display.newImageRect(decorSheet, decorFrame, decor_size, decor_size)
-                            
+                    elseif myGameplay == "obstacle" then
+                        if mRand(1, 100) <= config.RENDER.decorChances.obstacle then
+                            local decor_size = cellSize / mRand(1, 2)
+                            local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_OBSTACLE[mRand(1, #DECOR_FRAMES_OBSTACLE)], decor_size, decor_size)
                             if decorTile then
-                                decorTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                                decorTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
-
+                                decorTile.x, decorTile.y = cx, cy
                                 mapGroup:insert(decorTile)
                             end
                         end
-                    end
-                    
-                    
-                    tilesProcessed = tilesProcessed + 1
-                    if tilesProcessed % 2000 == 0 then
-                        --coroutine.yield({ status = "Pass 1: Base Tiles...", progress = (tilesProcessed / (width * height)) * 0.33 })
                     end
                 end
             end
+            coroutine.yield({ status = "Render Base...", progress = 0.33 })
         end
-        
-        -- ==========================================
+
         -- ПРОХІД 2: ПЕРЕХОДИ ТА КРАЇ
-        -- ==========================================
-        local function runPass2_Transitions()
-            Logger.info("Render", "[Pass 2] Drawing Transitions and Overlays...")
-            local tilesProcessed = 0
+        if config.RENDER.stages.transitions then
+            Logger.info("Render", "[Pass 2] Drawing Transitions...")
             local drawnBases = {}
 
             local function safeGetLayer(gx, gy)
@@ -344,86 +236,67 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                 return 0, nil
             end
 
-            -- Локальна функція для малювання 1 оверлею бутерброда або звичайного
             local function drawOverlay(x, y, dirKey, refCell)
                 if not refCell then return end
-                local config = getOverlayConfig(refCell, grid[x][y])
-                if not config or not config[dirKey] then return end
+                local c = getOverlayConfig(refCell, grid[x][y])
+                if not c or not c[dirKey] then return end
                 
-                local overlayData = config[dirKey]
-                
-                -- 2. СТАНДАРТНЕ МАЛЮВАННЯ (Один тайл)
+                local overlayData = c[dirKey]
+                local cx = mFloor(startX + (x - 1) * cellSize)
+                local cy = mFloor(startY + (y - 1) * cellSize)
                 
                 if type(overlayData) == "table" and #overlayData > 0 then
-                    local tile = display.newImageRect(tilesetSheet, overlayData[math.random(1, #overlayData)], CELL_SIZE, CELL_SIZE)
+                    local tile = display.newImageRect(tilesetSheet, overlayData[mRand(1, #overlayData)], cellSize, cellSize)
                     if tile then
                         if refCell.renderColor then tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                         elseif refCell.biome and refCell.biome.color then tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
-                        tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                        tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                        tile.x, tile.y = cx, cy
                         mapGroup:insert(tile)
                     end
                 end
                  
-                -- 1. ПЕРЕВІРКА НА "БУТЕРБРОД" (Два шари на одній клітинці)
                 if overlayData.base and overlayData.top then
-                    
-                    -- Створюємо унікальний ключ для цієї клітинки
                     local cellKey = x .. "_" .. y
                     if #overlayData.base > 0 and not drawnBases[cellKey] then
-                        local baseTile = display.newImageRect(tilesetSheet, overlayData.base[math.random(1, #overlayData.base)], CELL_SIZE, CELL_SIZE)
+                        local baseTile = display.newImageRect(tilesetSheet, overlayData.base[mRand(1, #overlayData.base)], cellSize, cellSize)
                         if baseTile then
                             baseTile:setFillColor(0.92, 0.85, 0.6) 
-                            baseTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                            baseTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            baseTile.x, baseTile.y = cx, cy
                             mapGroup:insert(baseTile)
-
                             drawnBases[cellKey] = true 
                         end
                     end
 
                     if #overlayData.top > 0 then
-                        local topTile = display.newImageRect(tilesetSheet, overlayData.top[math.random(1, #overlayData.top)], CELL_SIZE, CELL_SIZE)
+                        local topTile = display.newImageRect(tilesetSheet, overlayData.top[mRand(1, #overlayData.top)], cellSize, cellSize)
                         if topTile then
                             if refCell.renderColor then topTile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                             elseif refCell.biome and refCell.biome.color then topTile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
-                            topTile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                            topTile.y = math.floor(startY + (y - 1) * CELL_SIZE)
+                            topTile.x, topTile.y = cx, cy
                             mapGroup:insert(topTile)
                         end
                     end
                 end
                     
-                
-                -- 3. ПЕРЕВІРКА НА ВЕЛИКІ ГОРИ / СКЕЛІ (parts)
                 if overlayData.parts then
                     for _, part in ipairs(overlayData.parts) do
-                        
-                        local tile = display.newImageRect(tilesetSheet, part.frame, CELL_SIZE, CELL_SIZE)
+                        local tile = display.newImageRect(tilesetSheet, part.frame, cellSize, cellSize)
                         if tile then
-                            if refCell.renderColor then 
-                                tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
-                            elseif refCell.biome and refCell.biome.color then 
-                                tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) 
-                            end
+                            if refCell.renderColor then tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
+                            elseif refCell.biome and refCell.biome.color then tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
                             
-                            --  Додаємо зсув part.dx та part.dy (і округлюємо для мобільних)
-                            tile.x = math.floor(startX + (x - 1) * CELL_SIZE + (part.dx or 0) * CELL_SIZE)
-                            tile.y = math.floor(startY + (y - 1) * CELL_SIZE + (part.dy or 0) * CELL_SIZE)
-                            
-                            -- Додаємо в групу замість tex:draw
+                            tile.x = mFloor(cx + (part.dx or 0) * cellSize)
+                            tile.y = mFloor(cy + (part.dy or 0) * cellSize)
                             overLayerGroup:insert(tile)
                         end
                     end
                 end 
-
             end
 
             for y = 1, height do
                 for x = 1, width do
                     local myLayer = getLayer(grid[x][y])
                     
-                    -- 1. Прямі та Внутрішні кути
                     local layerN, cellN = safeGetLayer(x, y - 1)
                     local layerS, cellS = safeGetLayer(x, y + 1)
                     local layerW, cellW = safeGetLayer(x - 1, y)
@@ -442,7 +315,6 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                     if drawW then drawOverlay(x, y, "W", cellW) end
                     if drawE then drawOverlay(x, y, "E", cellE) end
 
-                    -- 2. Зовнішні кути (Діагоналі)
                     local diagonals = {
                         { dx = -1, dy = -1, dir = "NW", adj1 = {dx=0, dy=-1}, adj2 = {dx=-1, dy=0} }, 
                         { dx = 1,  dy = -1, dir = "NE", adj1 = {dx=0, dy=-1}, adj2 = {dx=1, dy=0}  }, 
@@ -459,85 +331,53 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
                             end
                         end
                     end
-                    
-                    tilesProcessed = tilesProcessed + 1
-                    if tilesProcessed % 2000 == 0 then
-                        --coroutine.yield({ status = "Pass 2: Overlays...", progress = 0.33 + (tilesProcessed / (width * height)) * 0.33 })
-                    end
                 end
             end
+            coroutine.yield({ status = "Render Overlays...", progress = 0.66 })
         end
 
-        -- ==========================================
-        -- ПРОХІД 3: ОБ'ЄКТИ ТА ГОРИ (Y-SORTING)
-        -- ==========================================
-        local function runPass3_Objects()
-            Logger.info("Render", "[Pass 3] Drawing Objects and Mountain Bases...")
-            
+        -- ПРОХІД 3: ОБ'ЄКТИ ТА ГОРИ
+        if config.RENDER.stages.obstacles then
+            Logger.info("Render", "[Pass 3] Drawing Objects...")
             for y = 1, height do
                 for x = 1, width do
                     local cell = grid[x][y]
+                    local cx = mFloor(startX + (x - 1) * cellSize)
+                    local cy = mFloor(startY + (y - 1) * cellSize)
 
                     if getGameplayType(cell) == "forest" then
-                        -- Завантажуємо окрему картинку дерева
-                        local tree = display.newImageRect(treeSheet, TREE_FRAMES[math.random(1, #TREE_FRAMES)], 96, 128)
-                        
+                        local tree = display.newImageRect(treeSheet, TREE_FRAMES[mRand(1, #TREE_FRAMES)], 96, 128)
                         if tree then
-                            -- Зміщуємо дерева в самий низ (до стовбура)
                             tree.anchorY = 1 
+                            tree.x = cx + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
+                            tree.y = cy + (cellSize / 2) + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
                             
-                            -- Ставимо стовбур по центру поточної клітинки
-                            tree.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                            -- Додаємо (CELL_SIZE / 2), щоб стовбур стояв на нижньому краї клітинки
-                            tree.y = math.floor(startY + (y - 1) * CELL_SIZE + (CELL_SIZE / 2))
-
-                            tree.x = tree.x + math.random(-8, 8)
-                            tree.y = tree.y + math.random(-8, 8)
-                            -- За бажанням можна трохи рандомізувати відтінок дерева, щоб ліс не був однаковим
-                            local shade = math.random(6, 10) / 10
+                            local shadeMin = mFloor(config.RENDER.treeShadeMin * 10)
+                            local shadeMax = mFloor(config.RENDER.treeShadeMax * 10)
+                            local shade = mRand(shadeMin, shadeMax) / 10
                             tree:setFillColor(shade, shade, shade)
                             
                             overLayerGroup:insert(tree)
                         end
                     end
                     
-                    
                     if getGameplayType(cell) == "obstacle" then
-                        
-                        -- Беремо базовий кадр гори 
                         local mtnFrames = BASE_TILES["obstacle"] 
-                        
                         if mtnFrames and #mtnFrames > 0 then
-                            local frame = mtnFrames[math.random(1, #mtnFrames)]
-                            local tile = display.newImageRect(tilesetSheet, frame, CELL_SIZE, CELL_SIZE)
-                            
+                            local tile = display.newImageRect(tilesetSheet, mtnFrames[mRand(1, #mtnFrames)], cellSize, cellSize)
                             if tile then
-                                if cell.renderColor then
-                                    tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3])
-                                end
-                                
-                                tile.x = math.floor(startX + (x - 1) * CELL_SIZE)
-                                tile.y = math.floor(startY + (y - 1) * CELL_SIZE)
-                                
+                                if cell.renderColor then tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3]) end
+                                tile.x, tile.y = cx, cy
                                 overLayerGroup:insert(tile)
                             end
                         end
                     end
-                    
                 end
             end
         end
 
-        -- ==========================================
-        -- ЗАПУСК ВИБРАНИХ ЕТАПІВ
-        -- ==========================================
-        if RENDER_STAGES.baseTiles   then runPass1_BaseTiles() end
-        if RENDER_STAGES.obstacles   then runPass3_Objects() end
-        if RENDER_STAGES.transitions then runPass2_Transitions() end
-        
-
-        -- Збираємо текстуру і віддаємо
-        fullmapGroup = display.newGroup()
+        -- Збираємо текстуру
+        local fullmapGroup = display.newGroup()
 
         tex:draw(mapGroup)
         tex:invalidate()
@@ -548,14 +388,12 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup)
         coroutine.yield({ status = "Finalizing GPU render...", progress = 0.99 })
         
         local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
-        -- Центр екрану на телефонах часто дробовий, округлюємо його
-        mapImage.x = math.floor(display.contentCenterX)
-        mapImage.y = math.floor(display.contentCenterY)
+        mapImage.x = mFloor(display.contentCenterX)
+        mapImage.y = mFloor(display.contentCenterY)
 
         local overLayerImage = display.newImageRect(parentGroup, overLayerGroupTex.filename, overLayerGroupTex.baseDir, totalWidth, totalHeight)
-        -- Центр екрану на телефонах часто дробовий, округлюємо його
-        overLayerImage.x = math.floor(display.contentCenterX)
-        overLayerImage.y = math.floor(display.contentCenterY)
+        overLayerImage.x = mFloor(display.contentCenterX)
+        overLayerImage.y = mFloor(display.contentCenterY)
 
         fullmapGroup:insert(mapImage)
         fullmapGroup:insert(overLayerImage)
