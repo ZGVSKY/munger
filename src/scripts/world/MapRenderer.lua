@@ -388,12 +388,12 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
         coroutine.yield({ status = "Finalizing GPU render...", progress = 0.99 })
         
         local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
-        mapImage.x = mFloor(display.contentCenterX)
-        mapImage.y = mFloor(display.contentCenterY)
+        mapImage.x = 0
+        mapImage.y = 0
 
         local overLayerImage = display.newImageRect(parentGroup, overLayerGroupTex.filename, overLayerGroupTex.baseDir, totalWidth, totalHeight)
-        overLayerImage.x = mFloor(display.contentCenterX)
-        overLayerImage.y = mFloor(display.contentCenterY)
+        overLayerImage.x = 0
+        overLayerImage.y = 0
 
         fullmapGroup:insert(mapImage)
         fullmapGroup:insert(overLayerImage)

@@ -74,7 +74,7 @@ function WorldManager.generateWorld(parentGroup, customConfig, callbacks)
                     
                     -- ВСЕ ГОТОВО!
                     if callbacks.onComplete then
-                        callbacks.onComplete(data.result)
+                        callbacks.onComplete({map = data.result, grid = mapGridData})
                     end
                 else
                     if callbacks.onProgress then

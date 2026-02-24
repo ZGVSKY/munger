@@ -55,20 +55,22 @@ function scene:show(event)
             end,
             
             -- 2. Успішне завершення
-            onComplete = function(mapImage)
+            onComplete = function(data)
                 loadingText.text = "Done!"
                 loadingBarFill.width = 296
                 
-                -- Передаємо готову карту камері
-                local cameraGroup = MAS:init(mapImage)
-                scene.view:insert(cameraGroup)
                 
-                cameraGroup.x = display.contentCenterX
-                cameraGroup.y = display.contentCenterY
-                MAS:start(cameraGroup)
-                
-                Logger.info("Scene", "World generated and camera initialized successfully!")
-                -- ТУТ В МАЙБУТНЬОМУ БУДЕ ПЕРЕХІД ДО GameScene
+                -- ПЕРЕХІД ДО ГОЛОВНОЇ СЦЕНИ (передаємо дані)
+                composer.gotoScene("src.scripts.core.GameScene", {
+                    time = 500,
+                    effect = "crossFade",
+                    params = {
+                        grid = data.grid,
+                        mapGroup = data.map,
+                        width = WorldConfig.MAP_WIDTH,
+                        height = WorldConfig.MAP_HEIGHT
+                    }
+                })
             end,
             
             -- 3. Обробка збоїв
