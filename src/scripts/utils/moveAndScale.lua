@@ -249,15 +249,18 @@ function touch(self, e)
             -- if there is more than one tracking dot, calculate the rotation and scaling
             if (#rect.dots > 1) then
                 -- calculate the average rotation of the tracking dots
-                rotate = calcAverageRotation( rect.dots )
+                --rotate = calcAverageRotation( rect.dots )
 
                 -- calculate the average scaling of the tracking dots
                 scale = calcAverageScaling( rect.dots )
 
                 -- apply rotation to rect
-                rect.rotation = rect.rotation + rotate
+                --rect.rotation = rect.rotation + rotate
 
                 -- apply scaling to rect
+                local minZoom, maxZoom = 0.5, 2.0
+                if scale < minZoom then scale = minZoom end
+                if scale > maxZoom then scale = maxZoom end
                 rect.xScale, rect.yScale = rect.xScale * scale, rect.yScale * scale
             end
 
@@ -270,12 +273,16 @@ function touch(self, e)
 
             -- scale around the average centre of the pinch
             -- (centre of the tracking dots, not the rect centre)
+            
+            local minZoom, maxZoom = 0.5, 2.0
+            if scale < minZoom then scale = minZoom end
+            if scale > maxZoom then scale = maxZoom end
             pt.x = centre.x + ((pt.x - centre.x) * scale)
             pt.y = centre.y + ((pt.y - centre.y) * scale)
 
             -- rotate the rect centre around the pinch centre
             -- (same rotation as the rect is rotated!)
-            pt = rotateAboutPoint( pt, centre, rotate, false )
+            --pt = rotateAboutPoint( pt, centre, rotate, false )
 
             -- apply pinch translation, scaling and rotation to the rect centre
             rect.x, rect.y = pt.x, pt.y
@@ -335,7 +342,6 @@ function MAS:start(group)
             
             local newScale = group.xScale + zoomFactor
             
-            -- Ставимо базовий запобіжник від вивороту навиворіт (від'ємного скейлу)
             if newScale > 0.1 then
                 group.xScale = newScale
                 group.yScale = newScale

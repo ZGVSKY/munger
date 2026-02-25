@@ -31,8 +31,8 @@ function EntityRenderer:drawAll(gameState)
         
         -- 1. Будівлі (Замки)
         for _, building in ipairs(player.buildings) do
-            local cx = math.floor(self.startX + (building.x - 1) * CELL_SIZE + (CELL_SIZE / 2))
-            local cy = math.floor(self.startY + (building.y - 1) * CELL_SIZE + (CELL_SIZE / 2))
+            local cx = math.floor(self.startX + (building.x - 1) * CELL_SIZE)
+            local cy = math.floor(self.startY + (building.y - 1) * CELL_SIZE)
 
             local bVis = display.newRect(self.layer, cx, cy, CELL_SIZE * 0.8, CELL_SIZE * 0.8)
             bVis:setFillColor(unpack(player.color))

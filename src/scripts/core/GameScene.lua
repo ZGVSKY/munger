@@ -38,46 +38,76 @@ end
 
 --- Обробка тапу по екрану (Touch to Grid)
 local function onMapTap(event)
-    -- Конвертуємо координати екрану (event.x, event.y) в координати всередині worldGroup
     local localX, localY = scene.worldGroup:contentToLocal(event.x, event.y)
     
-    -- Конвертуємо пікселі в координати сітки [GridX, GridY]
-    local gridX = math.floor((localX - scene.startX) / CELL_SIZE) + 1
-    local gridY = math.floor((localY - scene.startY) / CELL_SIZE) + 1
+    -- 1. Знаходимо реальний лівий верхній край карти (віднімаємо половину тайлу)
+    local mapLeftEdge = scene.startX - (CELL_SIZE / 2)
+    local mapTopEdge = scene.startY - (CELL_SIZE / 2)
+    
+    -- 2. Тепер ділимо на розмір тайлу. Математика буде ідеальною!
+    local gridX = math.floor((localX - mapLeftEdge) / CELL_SIZE) + 1
+    local gridY = math.floor((localY - mapTopEdge) / CELL_SIZE) + 1
     
     -- Перевірка, чи не клікнули ми за межі карти
     local worldParams = scene.gameState.world
     if gridX >= 1 and gridX <= worldParams.width and gridY >= 1 and gridY <= worldParams.height then
         Logger.info("Input", "Tapped on Grid: " .. gridX .. ", " .. gridY)
         
-        -- Переміщуємо курсор виділення
-        scene.cursor.x = math.floor(scene.startX + (gridX - 1) * CELL_SIZE + (CELL_SIZE / 2))
-        scene.cursor.y = math.floor(scene.startY + (gridY - 1) * CELL_SIZE + (CELL_SIZE / 2))
+        -- Курсор залишаємо як є (він відмальовується ВІД ЦЕНТРУ, тому тут все було правильно)
+        scene.cursor.x = math.floor(scene.startX + (gridX - 1) * CELL_SIZE)
+        scene.cursor.y = math.floor(scene.startY + (gridY - 1) * CELL_SIZE)
         scene.cursor.isVisible = true
         
-        -- ОНОВЛЮЄМО ІНФОРМАЦІЮ В UI 
         local cellData = worldParams:getTile(gridX, gridY)
         scene.gameUI:showTileInfo(gridX, gridY, cellData)
     else
         scene.cursor.isVisible = false
+        scene.gameUI.infoGroup.isVisible = false
     end
     
     return true
 end
 
 --- Обмеження Камери (Clamp & Zoom)
+--- Обмеження Камери (Clamp Panning)
 local function onEnterFrame()
-    if not scene.cameraGroup then return end
+    if not scene.cameraGroup or not scene.gameState then return end
     
-    -- 1. Обмеження зуму (від 0.5x до 2.0x)
-    local minZoom, maxZoom = 0.5, 2.0
-    if scene.cameraGroup.xScale < minZoom then
-        scene.cameraGroup.xScale, scene.cameraGroup.yScale = minZoom, minZoom
-    elseif scene.cameraGroup.xScale > maxZoom then
-        scene.cameraGroup.xScale, scene.cameraGroup.yScale = maxZoom, maxZoom
+    local cam = scene.cameraGroup
+    local world = scene.gameState.world
+    
+    -- 1. Розміри карти в пікселях З УРАХУВАННЯМ поточного зуму
+    local mapW = world.width * CELL_SIZE * cam.xScale
+    local mapH = world.height * CELL_SIZE * cam.yScale
+    
+    -- 2. Розміри фізичного екрану
+    local screenW = display.actualContentWidth
+    local screenH = display.actualContentHeight
+    
+    -- 3. Математика меж (Лівий, Правий, Верхній, Нижній ліміти камери)
+    local minX = display.screenOriginX + screenW - (mapW / 2)
+    local maxX = display.screenOriginX + (mapW / 2)
+    
+    local minY = display.screenOriginY + screenH - (mapH / 2)
+    local maxY = display.screenOriginY + (mapH / 2)
+
+    -- 4. Перевірка по осі X
+    -- Якщо карта при віддаленні стала меншою за екран - тримаємо її по центру
+    if mapW <= screenW then
+        cam.x = display.contentCenterX
+    else
+        -- Інакше жорстко не пускаємо за краї
+        if cam.x < minX then cam.x = minX end
+        if cam.x > maxX then cam.x = maxX end
     end
-    
-    -- В майбутньому тут можна додати жорсткий Clamp, щоб камера не вилітала за межі карти по X та Y
+
+    -- 5. Перевірка по осі Y
+    if mapH <= screenH then
+        cam.y = display.contentCenterY
+    else
+        if cam.y < minY then cam.y = minY end
+        if cam.y > maxY then cam.y = maxY end
+    end
 end
 
 -- ==========================================
@@ -100,6 +130,8 @@ function scene:create(event)
     self.worldGroup:insert(self.territoryLayer)
     self.worldGroup:insert(self.entityLayer)
 
+    params.mapGroup.isVisible = true
+    self.mapGroupRef = params.mapGroup
     self.bgLayer:insert(params.mapGroup)
 
     self.cameraGroup = MAS:init(self.worldGroup)
@@ -164,8 +196,32 @@ function scene:hide(event)
     end
 end
 
+function scene:destroy(event)
+    Logger.info("GameScene", "Destroying scene and clearing VRAM...")
+    
+    if self.mapGroupRef then
+        -- Видаляємо першу текстуру (Земля)
+        if self.mapGroupRef._groundTex then
+            self.mapGroupRef._groundTex:releaseSelf()
+            self.mapGroupRef._groundTex = nil
+        end
+        -- Видаляємо другу текстуру (Дерева/Гори)
+        if self.mapGroupRef._overlayTex then
+            self.mapGroupRef._overlayTex:releaseSelf()
+            self.mapGroupRef._overlayTex = nil
+        end
+    end
+end
+
+local function onSystemEvent( event )
+    if ( event.type == "applicationResume" ) then
+        scene.TEXTURE:invalidate( "cache" )
+    end
+end
+
 scene:addEventListener("create", scene)
 scene:addEventListener("show", scene)
 scene:addEventListener("hide", scene)
+scene:addEventListener("destroy", scene)
 
 return scene

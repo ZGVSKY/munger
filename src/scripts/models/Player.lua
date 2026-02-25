@@ -26,6 +26,14 @@ function Player.new(id, isBot, colorConfig)
         food = 50
     }
 
+    -- Очікуваний прибуток/витрати за наступний хід
+    self.resourceDeltas = {
+        gold = 0,
+        stone = 0,
+        wood = 0,
+        food = 0
+    }
+
     -- Економіка та населення 
     self.economy = {
         totalPeasants = 5,

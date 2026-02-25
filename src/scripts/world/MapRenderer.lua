@@ -27,7 +27,7 @@ local decorSheetOptions = {
 }
 local decorSheet = graphics.newImageSheet("src/assets/world/decor.png", decorSheetOptions)
 
-local DECOR_FRAMES_GRASS = { 1,2,3,4,5,6,7,8,9,10,14,15,16,17,18,19,20,25,26 }
+local DECOR_FRAMES_GRASS = { 2,3,5,6,7,8,9,15,16,17,18,19,25,26 }
 local DECOR_FRAMES_OBSTACLE = {27,28,29 }
 local DECOR_FRAMES_COAST = {5,6}
 local TREE_FRAMES = { 1, 2, 3 }
@@ -165,6 +165,9 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
         
         local mapGroup = display.newGroup()
         local overLayerGroup = display.newGroup()
+
+        mapGroup.isVisible = false
+        overLayerGroup.isVisible = false
         
         local startX = mFloor(-(totalWidth / 2) + (cellSize / 2))
         local startY = mFloor(-(totalHeight / 2) + (cellSize / 2))
@@ -214,7 +217,7 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                             local decor_size = cellSize / mRand(1, 2)
                             local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_OBSTACLE[mRand(1, #DECOR_FRAMES_OBSTACLE)], decor_size, decor_size)
                             if decorTile then
-                                decorTile.x, decorTile.y = cx, cy
+                                decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
                                 mapGroup:insert(decorTile)
                             end
                         end
@@ -376,29 +379,37 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
             end
         end
 
-        -- Збираємо текстуру
+        -- ==========================================
+        -- ЗБИРАННЯ ТЕКСТУРИ ТА БЕЗПЕЧНЕ ОЧИЩЕННЯ
+        -- ==========================================
         local fullmapGroup = display.newGroup()
+        fullmapGroup.isVisible = false
 
-        tex:draw(mapGroup)
+        -- Показуємо об'єкти на мілісекунду для спалаху фотоапарата
+        mapGroup.isVisible = true
+        overLayerGroup.isVisible = true
+
+        -- Збираємо все в одну групу, щоб сфотографувати за 1 раз (Економить 165 МБ VRAM!)
+        local masterGroup = display.newGroup()
+        masterGroup:insert(mapGroup)
+        masterGroup:insert(overLayerGroup)
+
+        -- Робимо фотографію
+        tex:draw(masterGroup)
         tex:invalidate()
 
-        overLayerGroupTex:draw(overLayerGroup)
-        overLayerGroupTex:invalidate()
-
-        coroutine.yield({ status = "Finalizing GPU render...", progress = 0.99 })
-        
+        -- Створюємо фінальну картинку
         local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
-        mapImage.x = 0
-        mapImage.y = 0
-
-        local overLayerImage = display.newImageRect(parentGroup, overLayerGroupTex.filename, overLayerGroupTex.baseDir, totalWidth, totalHeight)
-        overLayerImage.x = 0
-        overLayerImage.y = 0
-
+        mapImage.x, mapImage.y = 0, 0
         fullmapGroup:insert(mapImage)
-        fullmapGroup:insert(overLayerImage)
 
-        Logger.info("Render", "Render Complete!")
+        -- Зберігаємо посилання на текстури, 
+        -- щоб сцена могла їх видалити при виході в меню!
+        -- ==========================================
+        fullmapGroup._groundTex = tex
+        fullmapGroup._overlayTex = overLayerGroupTex
+
+        Logger.info("Render", "Render Complete! Returning fullmapGroup.")
         return { status = "Done", result = fullmapGroup }
     end)
 end

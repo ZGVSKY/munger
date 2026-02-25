@@ -29,4 +29,5 @@ math.randomseed(os.time())                                      -- setup global 
 
 
 --composer.gotoScene( "src.scenes.create_game_menu" )                        -- moves to the main scene
-composer.gotoScene( "src.scenes.test_load_scene" )
+--composer.gotoScene( "src.scenes.test_load_scene" )
+composer.gotoScene( "src.scenes.loading" )

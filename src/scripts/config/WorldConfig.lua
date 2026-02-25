@@ -2,8 +2,8 @@
 local WorldConfig = {
     
     -- 1. БАЗОВІ НАЛАШТУВАННЯ СВІТУ
-    MAP_WIDTH = 600,
-    MAP_HEIGHT = 50,
+    MAP_WIDTH = 100,
+    MAP_HEIGHT = 100,
     CELL_SIZE = 64,
     SEED = os.time(), -- Можна замінити на фіксоване число для тестів
 
