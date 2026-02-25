@@ -4,6 +4,23 @@ local Logger = require("src.scripts.utils.logger")
 
 local SpawnManager = {}
 
+-- Допоміжна функція для стартової території
+    local function claimInitialTerritory(world, cx, cy, radius, playerId)
+        for y = cy - radius, cy + radius do
+            for x = cx - radius, cx + radius do
+                if x >= 1 and x <= world.width and y >= 1 and y <= world.height then
+                    local dist = math.abs(x - cx) + math.abs(y - cy)
+                    if dist <= radius then
+                        local cell = world:getTile(x, y)
+                        if cell.biome and cell.biome.gameplay ~= "water" then
+                            cell.ownerId = playerId
+                        end
+                    end
+                end
+            end
+        end
+    end
+
 --- Головна функція розстановки Замків
 -- @param world (World)
 -- @param players (table) Масив гравців
@@ -85,11 +102,9 @@ function SpawnManager.spawnCastles(world, players)
         
         -- Створюємо замок на знайденому місці
         if bestCand then
-            local castle = Building.new(world.nextBuildingId, player.id, "castle", bestCand.x, bestCand.y)
             world.nextBuildingId = world.nextBuildingId + 1
             
             -- Записуємо будівлю в світ і гравцю
-            world:getTile(bestCand.x, bestCand.y).buildingId = castle.id
             table.insert(player.buildings, castle)
             
             -- Зберігаємо координати для розрахунку відстані наступним гравцям
@@ -97,8 +112,37 @@ function SpawnManager.spawnCastles(world, players)
             
             -- Видаляємо цього кандидата, щоб інші не стали на нього ж
             table.remove(candidates, bestCandIndex)
+            local cx, cy = bestCand.x, bestCand.y
             
-            Logger.info("Spawn", "Player " .. player.id .. " castle placed at " .. bestCand.x .. ", " .. bestCand.y)
+            -- А) Створюємо стартову територію 
+            claimInitialTerritory(world, cx, cy, 5, player.id)
+
+            -- Б) 9 тайлів під замок (3x3)
+            for dy = -1, 1 do
+                for dx = -1, 1 do
+                    local nx, ny = cx + dx, cy + dy
+                        if nx >= 1 and nx <= world.width and ny >= 1 and ny <= world.height then
+                            local cell = world:getTile(nx, ny)
+                        
+                            -- Якщо це центр - ставимо головний ID, якщо боки - ставимо "стіну"
+                            if dx == 0 and dy == 0 then
+                                    cell.buildingId = "castle"
+                                    print( player.colorText )
+                                    cell.castleColor = player.colorText
+                            else
+                                    cell.buildingId = "castle_part"
+                            end
+                        
+                            -- Очищаємо об'єкти (дерева/гори), які могли тут згенеруватись
+                            cell.biome.props = nil 
+                            cell.ownerId = player.id
+                        end
+                    end
+                end
+            
+                Logger.info("MatchInit", "Player " .. player.id .. " castle placed at " .. cx .. "," .. cy)
+            
+            
         end
     end
 end

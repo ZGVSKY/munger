@@ -389,19 +389,19 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
         mapGroup.isVisible = true
         overLayerGroup.isVisible = true
 
-        -- Збираємо все в одну групу, щоб сфотографувати за 1 раз (Економить 165 МБ VRAM!)
-        local masterGroup = display.newGroup()
-        masterGroup:insert(mapGroup)
-        masterGroup:insert(overLayerGroup)
-
-        -- Робимо фотографію
-        tex:draw(masterGroup)
-        tex:invalidate()
-
         -- Створюємо фінальну картинку
         local mapImage = display.newImageRect(parentGroup, tex.filename, tex.baseDir, totalWidth, totalHeight)
         mapImage.x, mapImage.y = 0, 0
-        fullmapGroup:insert(mapImage)
+        local overLayerImage = display.newImageRect(parentGroup, overLayerGroupTex.filename, overLayerGroupTex.baseDir, totalWidth, totalHeight)
+        overLayerImage.x, overLayerImage.y = 0, 0
+ 
+        tex:draw(mapGroup)
+        tex:invalidate()
+
+        overLayerGroupTex:draw(overLayerGroup)
+        overLayerGroupTex:invalidate()
+
+        
 
         -- Зберігаємо посилання на текстури, 
         -- щоб сцена могла їх видалити при виході в меню!
@@ -410,7 +410,7 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
         fullmapGroup._overlayTex = overLayerGroupTex
 
         Logger.info("Render", "Render Complete! Returning fullmapGroup.")
-        return { status = "Done", result = fullmapGroup }
+        return { status = "Done", result = fullmapGroup, map = mapImage, topMapImage = overLayerImage }
     end)
 end
 

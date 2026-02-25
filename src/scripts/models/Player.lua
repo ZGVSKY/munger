@@ -6,13 +6,14 @@ Player.__index = Player
 -- @param id (number) Унікальний номер гравця
 -- @param isBot (boolean) Чи керує цим гравцем ШІ
 -- @param colorConfig (table) Колір гравця у форматі {r, g, b}
-function Player.new(id, isBot, colorConfig)
+function Player.new(id, name, isBot, colorConfig, colorText)
     local self = setmetatable({}, Player)
     
     -- Базова інформація
     self.id = id
-    self.name = isBot and ("Bot " .. id) or ("Player " .. id)
+    self.name = isBot and ("Bot " .. id) or name
     self.color = colorConfig or {1, 1, 1}
+    self.colorText = colorText
     
     -- Стан гравця
     self.isBot = isBot or false

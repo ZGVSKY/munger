@@ -67,6 +67,8 @@ function scene:show(event)
                     params = {
                         grid = data.grid,
                         mapGroup = data.map,
+                        mapImage = data.mapImage,
+                        topMapImage = data.topMapImage,
                         width = WorldConfig.MAP_WIDTH,
                         height = WorldConfig.MAP_HEIGHT
                     }

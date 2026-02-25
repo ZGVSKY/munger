@@ -1,35 +1,113 @@
 -- src/scripts/core/ActionManager.lua
+local ToastManager = require("src.scripts.view.ToastManager")
 local Logger = require("src.scripts.utils.logger")
 
 local ActionManager = {}
 
---- Головна функція виконання будь-якої дії
--- @param gameState - поточний стан гри
--- @param action - таблиця з командою, наприклад { type = "MOVE", playerId = 1, unitId = 5, x = 10, y = 12 }
-function ActionManager.execute(gameState, action)
-    local activePlayer = gameState:getCurrentPlayer()
-    
-    -- 1. Базова перевірка: чи зараз взагалі хід цього гравця?
-    if action.playerId ~= activePlayer.id then
-        Logger.error("Action", "Player " .. action.playerId .. " tried to act, but it's Player " .. activePlayer.id .. "'s turn!")
-        return false
+-- Поточний стан (режим)
+ActionManager.mode = "idle" -- "idle", "build_resource", "build_defense", "spawn_unit"
+ActionManager.currentData = nil
+
+-- Допоміжна функція: перевірка типу тайлу
+local function getGameplayType(cell)
+    if not cell or not cell.biome then return "water" end
+    return cell.biome.gameplay or "water"
+end
+
+-- НОВЕ: Функція захоплення території (Радіус навколо центру)
+local function claimTerritory(world, cx, cy, radius, playerId)
+    -- Проходимо квадратом навколо точки
+    for y = cy - radius, cy + radius do
+        for x = cx - radius, cx + radius do
+            if x >= 1 and x <= world.width and y >= 1 and y <= world.height then
+                -- Математика Манхеттенської відстані (щоб територія була ромбом/колом, а не квадратом)
+                local dist = math.abs(x - cx) + math.abs(y - cy)
+                if dist <= radius then
+                    local cell = world:getTile(x, y)
+                    -- Не можна захоплювати воду
+                    if getGameplayType(cell) ~= "water" then
+                        cell.ownerId = playerId
+                    end
+                end
+            end
+        end
     end
+end
+
+
+--- Активує режим певної дії (викликається кнопками UI)
+function ActionManager.setMode(mode, data)
+    ActionManager.mode = mode
+    ActionManager.currentData = data
     
-    Logger.info("Action", "Executing [" .. action.type .. "] for Player " .. action.playerId)
-    
-    -- 2. Розподіл по типах команд (поки залишаємо пустим для майбутнього)
-    if action.type == "MOVE" then
-        -- логіка руху
-    elseif action.type == "BUILD" then
-        -- логіка будівництва
-    elseif action.type == "ATTACK" then
-        -- логіка бою
+    if mode ~= "idle" then
+        ToastManager.show("Select tile to place " .. data.name, {0.8, 0.8, 0.2})
+        Logger.info("ActionManager", "Mode set to: " .. mode .. " | " .. data.name)
     else
-        Logger.error("Action", "Unknown action type: " .. tostring(action.type))
-        return false
+        Logger.info("ActionManager", "Mode reset to idle")
     end
-    
-    return true
+end
+
+--- Обробляє клік по карті залежно від поточного режиму
+function ActionManager.handleMapClick(gridX, gridY, gameState, ui)
+    -- Якщо ми просто оглядаємо карту, нічого не робимо
+    if ActionManager.mode == "idle" then return false end
+
+    local player = gameState:getCurrentPlayer()
+    local cell = gameState.world:getTile(gridX, gridY)
+
+    -- БАЗОВІ ПЕРЕВІРКИ (поки без перевірки на свою територію, зробимо це наступним кроком)
+    if cell.buildingId or cell.unitId then
+        ToastManager.show("Tile is already occupied!", {0.8, 0.2, 0.2})
+        ActionManager.setMode("idle") -- Скидаємо дію
+        return true -- Клік оброблено, але з помилкою
+    end
+
+    if getGameplayType(cell) == "water" or getGameplayType(cell) == "obstacle" then
+        ToastManager.show("Cannot place here!", {0.8, 0.2, 0.2})
+        ActionManager.setMode("idle")
+        return true
+    end
+
+    -- ЛОГІКА БУДІВНИЦТВА (Ферми, Шахти, Вежі)
+    if ActionManager.mode == "build_resource" or ActionManager.mode == "build_defense" then
+        -- Віднімаємо золото (тимчасова логіка для тесту)
+        if player.resources.gold < ActionManager.currentData.cost then
+            ToastManager.show("Not enough gold!", {0.8, 0.2, 0.2})
+            ActionManager.setMode("idle")
+            return true
+        end
+        player:addResource("gold", -ActionManager.currentData.cost)
+
+        -- Записуємо дані в клітинку
+        cell.buildingId = ActionManager.currentData.id
+        cell.ownerId = player.id -- Привласнюємо клітинку
+
+        ToastManager.show(ActionManager.currentData.name .. " Built!", player.color)
+        
+        -- Оновлюємо UI (щоб показати зняття грошей)
+        ui:update()
+        ActionManager.setMode("idle")
+        return true
+    end
+
+    -- ЛОГІКА НАЙМУ ЮНІТІВ (Воїни)
+    if ActionManager.mode == "spawn_unit" then
+        cell.unitId = ActionManager.currentData.id
+        cell.ownerId = player.id
+        
+        ToastManager.show(ActionManager.currentData.name .. " Deployed!", player.color)
+        ActionManager.setMode("idle")
+        return true
+    end
+
+    return false
+end
+
+-- Допоміжна функція (тимчасова)
+function getGameplayType(cell)
+    if not cell or not cell.biome then return "water" end
+    return cell.biome.gameplay or "water"
 end
 
 return ActionManager

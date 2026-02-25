@@ -1,5 +1,6 @@
 -- src/scripts/view/GameUI.lua
 local TurnManager = require("src.scripts.core.TurnManager")
+local ActionManager = require("src.scripts.core.ActionManager")
 local Logger = require("src.scripts.utils.logger")
 local ScreenUtils = require("src.scripts.view.ScreenUtils")
 local ToastManager = require("src.scripts.view.ToastManager")
@@ -175,14 +176,22 @@ function GameUI.new(uiLayer, gameState)
     UITheme.applyStyle(botBg)
     botBg:addEventListener("touch", function() return true end)
     
-    -- Кнопки дій (зліва)
-    for i = 1, 4 do
+    local actionButtons = {
+        { label = "U", color = {0.8, 0.3, 0.3}, mode = "spawn_unit", data = {id = "warrior_lvl1", name = "Lvl 1 Warrior", cost = 50} },
+        { label = "R", color = {0.3, 0.8, 0.3}, mode = "build_resource", data = {id = "farm_lvl1", name = "Lvl 1 Farm", cost = 100} },
+        { label = "D", color = {0.3, 0.3, 0.8}, mode = "build_defense", data = {id = "tower_lvl1", name = "Defense Tower", cost = 150} }
+    }
+
+    for i, btnConf in ipairs(actionButtons) do
         local actionBtn = display.newCircle(self.bottomGroup, botBg.x - botBg.width/2 + ScreenUtils.px(40) + (i-1)*ScreenUtils.px(60), botBg.y, ScreenUtils.px(20))
-        actionBtn:setFillColor(0.3, 0.3, 0.3)
+        actionBtn:setFillColor(unpack(btnConf.color))
         
-        -- Заглушка кліку
+        -- Додаємо літеру на кнопку для наочності (U, R, D)
+        display.newText(self.bottomGroup, btnConf.label, actionBtn.x, actionBtn.y, UITheme.fontMain, ScreenUtils.px(16))
+        
         actionBtn:addEventListener("tap", function()
-            ToastManager.show("Action " .. i .. " (Coming Soon!)", {0.2, 0.4, 0.8})
+            -- Передаємо режим в ActionManager
+            ActionManager.setMode(btnConf.mode, btnConf.data)
             return true
         end)
     end

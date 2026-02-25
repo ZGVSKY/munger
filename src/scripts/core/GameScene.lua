@@ -2,6 +2,7 @@
 local composer = require("composer")
 local scene = composer.newScene()
 
+local ActionManager = require("src.scripts.core.ActionManager")
 local MatchInit = require("src.scripts.core.MatchInit")
 local TurnManager = require("src.scripts.core.TurnManager")
 local EntityRenderer = require("src.scripts.world.EntityRenderer")
@@ -52,7 +53,16 @@ local function onMapTap(event)
     local worldParams = scene.gameState.world
     if gridX >= 1 and gridX <= worldParams.width and gridY >= 1 and gridY <= worldParams.height then
         Logger.info("Input", "Tapped on Grid: " .. gridX .. ", " .. gridY)
+
+        local actionHandled = ActionManager.handleMapClick(gridX, gridY, scene.gameState, scene.gameUI)
         
+        if actionHandled then
+            scene.entityRenderer:update(scene.gameState)
+            -- Оновлюємо візуальний стан карти (поки просто ховаємо курсор)
+            scene.cursor.isVisible = false
+            scene.gameUI.infoGroup.isVisible = false
+            return true 
+        end
         -- Курсор залишаємо як є (він відмальовується ВІД ЦЕНТРУ, тому тут все було правильно)
         scene.cursor.x = math.floor(scene.startX + (gridX - 1) * CELL_SIZE)
         scene.cursor.y = math.floor(scene.startY + (gridY - 1) * CELL_SIZE)
@@ -122,17 +132,20 @@ function scene:create(event)
 
     self.worldGroup = display.newGroup()     
     self.bgLayer = display.newGroup()        
-    self.territoryLayer = display.newGroup() 
+    self.territoryLayer = display.newGroup()
+    self.bgOverlayer = display.newGroup() 
     self.entityLayer = display.newGroup()    
     self.uiLayer = display.newGroup()        
 
     self.worldGroup:insert(self.bgLayer)
     self.worldGroup:insert(self.territoryLayer)
+    self.worldGroup:insert(self.bgOverlayer)
     self.worldGroup:insert(self.entityLayer)
 
-    params.mapGroup.isVisible = true
+    --params.mapGroup.isVisible = true
     self.mapGroupRef = params.mapGroup
-    self.bgLayer:insert(params.mapGroup)
+    self.bgLayer:insert(params.mapImage)
+    self.bgOverlayer:insert(params.topMapImage)
 
     self.cameraGroup = MAS:init(self.worldGroup)
     self.cameraGroup.x = display.contentCenterX
@@ -157,8 +170,7 @@ function scene:create(event)
 
     -- Ініціалізація Логіки
     self.gameState = MatchInit.setupNewGame(params.grid, params.width, params.height)
-    self.entityRenderer = EntityRenderer.new(self.entityLayer, self.startX, self.startY)
-    self.entityRenderer:drawAll(self.gameState)
+    self.entityRenderer = EntityRenderer.new(self.entityLayer, self.territoryLayer , CELL_SIZE, self.startX, self.startY)
 
     -- СТВОРЕННЯ UI 
     self.gameUI = GameUI.new(self.uiLayer, self.gameState)
@@ -179,7 +191,7 @@ end
 function scene:show(event)
     if event.phase == "did" then
         Logger.info("GameScene", "Game Started!")
-        
+        self.entityRenderer:update(self.gameState)
         -- Демонстрація focusOn: На старті плавно летимо до Замку Першого Гравця!
         local p1 = self.gameState:getPlayerById(1)
         if p1 and #p1.buildings > 0 then
