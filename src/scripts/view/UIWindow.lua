@@ -18,7 +18,11 @@ function UIWindow.new(params)
     if params.closeOnOutside or params.isModal then
         self.overlayBg = display.newRect(self.container, display.contentCenterX, display.contentCenterY, display.actualContentWidth + 100, display.actualContentHeight + 100)
         
-        self.overlayBg:setFillColor(0, 0, 0, 0.6) 
+        if params.transparentOverlay then
+            self.overlayBg:setFillColor(0, 0, 0, 0.01) -- Невидимий, але ловить кліки
+        else
+            self.overlayBg:setFillColor(0, 0, 0, params.isModal and 0.6 or 0.4) 
+        end 
         
         self.overlayBg:addEventListener("touch", function() return true end) 
         

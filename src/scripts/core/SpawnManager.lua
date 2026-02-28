@@ -5,12 +5,16 @@ local Logger = require("src.scripts.utils.logger")
 local SpawnManager = {}
 
 -- Допоміжна функція для стартової території
-    local function claimInitialTerritory(world, cx, cy, radius, playerId)
+local function claimInitialTerritory(world, cx, cy, radius, playerId)
+        -- Додаємо 0.5 до радіуса, щоб краї кола на квадратній сітці виглядали акуратніше
+        local radiusSq = (radius + 0.5) * (radius + 0.5) 
+        
         for y = cy - radius, cy + radius do
             for x = cx - radius, cx + radius do
                 if x >= 1 and x <= world.width and y >= 1 and y <= world.height then
-                    local dist = math.abs(x - cx) + math.abs(y - cy)
-                    if dist <= radius then
+                    -- Формула кола: (x - cx)^2 + (y - cy)^2 <= R^2
+                    local distSq = (x - cx)^2 + (y - cy)^2
+                    if distSq <= radiusSq then
                         local cell = world:getTile(x, y)
                         if cell.biome and cell.biome.gameplay ~= "water" then
                             cell.ownerId = playerId
@@ -134,7 +138,7 @@ function SpawnManager.spawnCastles(world, players)
                             end
                         
                             -- Очищаємо об'єкти (дерева/гори), які могли тут згенеруватись
-                            cell.biome.props = nil 
+                            --cell.biome.props = nil 
                             cell.ownerId = player.id
                         end
                     end

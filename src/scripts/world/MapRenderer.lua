@@ -17,10 +17,8 @@ local sheetOptions = {
 }
 local tilesetSheet = graphics.newImageSheet("src/assets/world/tiles.png", sheetOptions)
 
-local treeSheetOptions = {
-    width = 48, height = 64, numFrames = 3
-}
-local treeSheet = graphics.newImageSheet("src/assets/world/trees.png", treeSheetOptions)
+--local treeSheetOptions = { width = 48, height = 64, numFrames = 3 }
+--local treeSheet = graphics.newImageSheet("src/assets/world/trees.png", treeSheetOptions)
 
 local decorSheetOptions = {
     width = 16, height = 16, numFrames = 30 
@@ -30,7 +28,7 @@ local decorSheet = graphics.newImageSheet("src/assets/world/decor.png", decorShe
 local DECOR_FRAMES_GRASS = { 2,3,5,6,7,8,9,15,16,17,18,19,25,26 }
 local DECOR_FRAMES_OBSTACLE = {27,28,29 }
 local DECOR_FRAMES_COAST = {5,6}
-local TREE_FRAMES = { 1, 2, 3 }
+--local TREE_FRAMES = { 1, 2, 3 }
 
 -- ==========================================
 -- 2. БАЗОВІ ТАЙЛИ ТА ІЄРАРХІЯ
@@ -200,22 +198,13 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                             local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_GRASS[mRand(1, #DECOR_FRAMES_GRASS)], decor_size, decor_size)
                             if decorTile then
                                 decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
-                                mapGroup:insert(decorTile)
+                                overLayerGroup:insert(decorTile)
                             end
                         end
                     elseif myGameplay == "coast" then
                         if mRand(1, 100) <= config.RENDER.decorChances.coast then
                             local decor_size = cellSize / mRand(1, 2)
                             local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_COAST[mRand(1, #DECOR_FRAMES_COAST)], decor_size, decor_size)
-                            if decorTile then
-                                decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
-                                mapGroup:insert(decorTile)
-                            end
-                        end
-                    elseif myGameplay == "obstacle" then
-                        if mRand(1, 100) <= config.RENDER.decorChances.obstacle then
-                            local decor_size = cellSize / mRand(1, 2)
-                            local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_OBSTACLE[mRand(1, #DECOR_FRAMES_OBSTACLE)], decor_size, decor_size)
                             if decorTile then
                                 decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
                                 mapGroup:insert(decorTile)
@@ -254,7 +243,10 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                         if refCell.renderColor then tile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                         elseif refCell.biome and refCell.biome.color then tile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
                         tile.x, tile.y = cx, cy
-                        mapGroup:insert(tile)
+                        
+                        if getGameplayType(cell) == "obstacle" then 
+                            overLayerGroup:insert(baseTile)
+                        else mapGroup:insert(tile) end
                     end
                 end
                  
@@ -265,7 +257,10 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                         if baseTile then
                             baseTile:setFillColor(0.92, 0.85, 0.6) 
                             baseTile.x, baseTile.y = cx, cy
-                            mapGroup:insert(baseTile)
+                            
+                            if getGameplayType(cell) == "obstacle" then 
+                                overLayerGroup:insert(baseTile)
+                            else mapGroup:insert(baseTile) end
                             drawnBases[cellKey] = true 
                         end
                     end
@@ -276,7 +271,9 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                             if refCell.renderColor then topTile:setFillColor(refCell.renderColor[1], refCell.renderColor[2], refCell.renderColor[3])
                             elseif refCell.biome and refCell.biome.color then topTile:setFillColor(refCell.biome.color[1], refCell.biome.color[2], refCell.biome.color[3]) end
                             topTile.x, topTile.y = cx, cy
-                            mapGroup:insert(topTile)
+                            if getGameplayType(cell) == "obstacle" then
+                                overLayerGroup:insert(topTile) 
+                            else mapGroup:insert(topTile) end
                         end
                     end
                 end
@@ -291,6 +288,10 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                             tile.x = mFloor(cx + (part.dx or 0) * cellSize)
                             tile.y = mFloor(cy + (part.dy or 0) * cellSize)
                             overLayerGroup:insert(tile)
+                            -- Ставимо заглушку
+                            grid[x + (part.dx or 0)][y + (part.dy or 0)].biome = "bare" 
+                            
+                           
                         end
                     end
                 end 
@@ -348,21 +349,21 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                     local cx = mFloor(startX + (x - 1) * cellSize)
                     local cy = mFloor(startY + (y - 1) * cellSize)
 
-                    if getGameplayType(cell) == "forest" then
-                        local tree = display.newImageRect(treeSheet, TREE_FRAMES[mRand(1, #TREE_FRAMES)], 96, 128)
-                        if tree then
-                            tree.anchorY = 1 
-                            tree.x = cx + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
-                            tree.y = cy + (cellSize / 2) + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
-                            
-                            local shadeMin = mFloor(config.RENDER.treeShadeMin * 10)
-                            local shadeMax = mFloor(config.RENDER.treeShadeMax * 10)
-                            local shade = mRand(shadeMin, shadeMax) / 10
-                            tree:setFillColor(shade, shade, shade)
-                            
-                            overLayerGroup:insert(tree)
-                        end
-                    end
+                    --if getGameplayType(cell) == "forest" then
+                    --    local tree = display.newImageRect(treeSheet, TREE_FRAMES[mRand(1, #TREE_FRAMES)], 96, 128)
+                    --    if tree then
+                    --        tree.anchorY = 1 
+                    --        tree.x = cx + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
+                    --        tree.y = cy + (cellSize / 2) + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
+                    --        
+                    --        local shadeMin = mFloor(config.RENDER.treeShadeMin * 10)
+                    --        local shadeMax = mFloor(config.RENDER.treeShadeMax * 10)
+                    --        local shade = mRand(shadeMin, shadeMax) / 10
+                    --        tree:setFillColor(shade, shade, shade)
+                    --        
+                    --        overLayerGroup:insert(tree)
+                    --    end
+                    --end
                     
                     if getGameplayType(cell) == "obstacle" then
                         local mtnFrames = BASE_TILES["obstacle"] 
@@ -370,8 +371,18 @@ function MapRenderer.createRenderCoroutine(grid, parentGroup, customConfig)
                             local tile = display.newImageRect(tilesetSheet, mtnFrames[mRand(1, #mtnFrames)], cellSize, cellSize)
                             if tile then
                                 if cell.renderColor then tile:setFillColor(cell.renderColor[1], cell.renderColor[2], cell.renderColor[3]) end
-                                tile.x, tile.y = cx, cy
-                                overLayerGroup:insert(tile)
+                                    tile.x, tile.y = cx, cy
+                                    overLayerGroup:insert(tile)
+                                
+                                    if mRand(1, 100) <= config.RENDER.decorChances.obstacle then
+                                    local decor_size = cellSize / mRand(1, 2)
+                                    local decorTile = display.newImageRect(decorSheet, DECOR_FRAMES_OBSTACLE[mRand(1, #DECOR_FRAMES_OBSTACLE)], decor_size, decor_size)
+                                    if decorTile then
+                                        decorTile.x, decorTile.y = cx + mRand(-8, 8), cy
+                                        overLayerGroup:insert(decorTile)
+                                    end
+                                end
+                    
                             end
                         end
                     end

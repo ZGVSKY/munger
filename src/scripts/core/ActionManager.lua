@@ -14,25 +14,26 @@ local function getGameplayType(cell)
     return cell.biome.gameplay or "water"
 end
 
--- НОВЕ: Функція захоплення території (Радіус навколо центру)
-local function claimTerritory(world, cx, cy, radius, playerId)
-    -- Проходимо квадратом навколо точки
-    for y = cy - radius, cy + radius do
-        for x = cx - radius, cx + radius do
-            if x >= 1 and x <= world.width and y >= 1 and y <= world.height then
-                -- Математика Манхеттенської відстані (щоб територія була ромбом/колом, а не квадратом)
-                local dist = math.abs(x - cx) + math.abs(y - cy)
-                if dist <= radius then
-                    local cell = world:getTile(x, y)
-                    -- Не можна захоплювати воду
-                    if getGameplayType(cell) ~= "water" then
-                        cell.ownerId = playerId
+-- Функція захоплення території (Радіус навколо центру)
+local function claimInitialTerritory(world, cx, cy, radius, playerId)
+        -- Додаємо 0.5 до радіуса, щоб краї кола на квадратній сітці виглядали акуратніше
+        local radiusSq = (radius + 0.5) * (radius + 0.5) 
+        
+        for y = cy - radius, cy + radius do
+            for x = cx - radius, cx + radius do
+                if x >= 1 and x <= world.width and y >= 1 and y <= world.height then
+                    -- Формула кола: (x - cx)^2 + (y - cy)^2 <= R^2
+                    local distSq = (x - cx)^2 + (y - cy)^2
+                    if distSq <= radiusSq then
+                        local cell = world:getTile(x, y)
+                        if cell.biome and cell.biome.gameplay ~= "water" then
+                            cell.ownerId = playerId
+                        end
                     end
                 end
             end
         end
     end
-end
 
 
 --- Активує режим певної дії (викликається кнопками UI)
@@ -65,6 +66,15 @@ function ActionManager.handleMapClick(gridX, gridY, gameState, ui)
 
     if getGameplayType(cell) == "water" or getGameplayType(cell) == "obstacle" then
         ToastManager.show("Cannot place here!", {0.8, 0.2, 0.2})
+        ActionManager.setMode("idle")
+        return true
+    end
+
+    -- ==========================================
+    -- ЗАБОРОНА БУДІВНИЦТВА НА ЧУЖІЙ ЗЕМЛІ
+    -- ==========================================
+    if cell.ownerId ~= player.id then
+        ToastManager.show("You must build on your territory!", {0.9, 0.2, 0.2})
         ActionManager.setMode("idle")
         return true
     end

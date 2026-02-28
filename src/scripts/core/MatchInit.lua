@@ -16,7 +16,7 @@ function MatchInit.setupNewGame(grid, width, height)
     
     -- 2. Створюємо Гравців (Player 1 - Людина, Player 2 - Бот)
     local p1 = Player.new(1,"sasha", false, {0.2, 0.4, 1}, "Blue") 
-    local p2 = Player.new(2,"bot", true, {1, 0.2, 0.2}, "red")
+    local p2 = Player.new(2,"bot", true, {1, 0.2, 0.2}, "Red")
     local players = {p1, p2}
     
     -- 3. Розставляємо Замки

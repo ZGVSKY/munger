@@ -65,6 +65,16 @@ local RulesConfig = {
         }
     },
 
+    -- КАТАЛОГ ДОБУВАЮЧИХ БУДІВЕЛЬ (Ресурси)
+    BUILDINGScatalog = {
+        { id = "peasant_house", name = "peasant_house", cost = { wood = 15 }, income = 10},
+        { id = "farm",          name = "farm",          cost = { wood = 20 }, income = 25},
+        { id = "mine",          name = "mine",          cost = { wood = 30 }, income = 15},
+        { id = "lumbermill",    name = "lumbermill",    cost = { stone = 10 }, income = 25},
+        { id = "workshop",      name = "workshop",      cost = { wood = 40, stone = 20 }, income = 25},
+        { id = "barracks",      name = "barracks",      cost = { stone = 40, wood = 40 }, income = 25}
+    },
+
     -- ==========================================
     -- 4. ЮНІТИ (Воїни)
     -- ==========================================
@@ -87,7 +97,7 @@ local RulesConfig = {
             canAttackCastle = false
         },
         warrior_lv3 = {
-            cost = { gold = 100, stone = 20, wood = 20 },
+            cost = { wood = 15 },
             upkeep = { gold = 10 },
             hp = 250,
             maxMoves = 6,
@@ -95,7 +105,20 @@ local RulesConfig = {
             canAttackBuildings = true,
             canAttackCastle = true     
         }
+    },
+
+    -- КАТАЛОГ ЮНІТІВ
+    UNITScatalog = {
+        { id = "warrior_lvl1", name = "Warrior Lvl 1", cost = { gold = 20 },  upkeep = 2,  moveRange = 2 },
+        { id = "warrior_lvl2", name = "Warrior Lvl 2", cost = { gold = 50, wood = 10 }, upkeep = 5,  moveRange = 3 },
+        { id = "warrior_lvl3", name = "Warrior Lvl 3", cost = { wood = 15 }, upkeep = 10, moveRange = 5 }
     }
+}
+
+-- КАТАЛОГ ЗАХИСНИХ СПОРУД
+defense_buildings = {
+    --{ id = "tower_lvl1", name = "Watch Tower", cost = 150, hp = 500, iconColor = {0.3, 0.3, 0.8} },
+    --{ id = "wall", name = "Stone Wall", cost = 25, hp = 200, iconColor = {0.6, 0.6, 0.6} }
 }
 
 return RulesConfig

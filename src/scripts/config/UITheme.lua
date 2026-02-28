@@ -23,17 +23,18 @@ UITheme.panelColorBottom = {17/255, 13/255, 21/255} -- Темніший низ
 -- ==========================================
 -- 4. ГЕНЕРАТОР ГРАДІЄНТУ
 -- ==========================================
-function UITheme.getPanelGradient()
-    return graphics.newGradient(
-        { UITheme.panelColorTop[1], UITheme.panelColorTop[2], UITheme.panelColorTop[3], UITheme.globalBgAlpha },
-        { UITheme.panelColorBottom[1], UITheme.panelColorBottom[2], UITheme.panelColorBottom[3], UITheme.globalBgAlpha },
-        "down" -- Напрямок градієнту (згори вниз)
-    )
-end
+
+topBar = {
+    type = "gradient",
+    color1 = { UITheme.panelColorTop[1], UITheme.panelColorTop[2], UITheme.panelColorTop[3], UITheme.globalBgAlpha },
+    color2 = { UITheme.panelColorBottom[1], UITheme.panelColorBottom[2], UITheme.panelColorBottom[3], UITheme.globalBgAlpha },
+    direction = "down"
+}
+
 
 --- Допоміжна функція для налаштування фону 
 function UITheme.applyStyle(rectObj)
-    rectObj:setFillColor(UITheme.getPanelGradient())
+    rectObj:setFillColor(topBar)
     rectObj.strokeWidth = UITheme.strokeWidth
     -- Обводка завжди 100% непрозора для чіткості
     rectObj:setStrokeColor(UITheme.strokeColor[1], UITheme.strokeColor[2], UITheme.strokeColor[3], 0.55)
