@@ -21,6 +21,7 @@ function MatchInit.setupNewGame(grid, width, height)
     
     -- 3. Розставляємо Замки
     SpawnManager.spawnCastles(world, players)
+    SpawnManager.generateTrees(grid, width, height)
     
     -- 4. Формуємо глобальний стан
     local gameState = GameState.new(world, players)

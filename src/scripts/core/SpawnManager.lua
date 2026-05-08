@@ -131,8 +131,20 @@ function SpawnManager.spawnCastles(world, players)
                             -- Якщо це центр - ставимо головний ID, якщо боки - ставимо "стіну"
                             if dx == 0 and dy == 0 then
                                     cell.buildingId = "castle"
-                                    print( player.colorText )
+                                    --print( player.colorText )
                                     cell.castleColor = player.colorText
+                                    
+
+                                    local castleWorldX = math.floor(-((world.width*64) / 2) + (64 / 2)) + (nx-1)  * 64
+                                    local castleWorldY = math.floor(-((world.height*64) / 2) + (64 / 2)) + (ny-1)  * 64
+
+                                    -- 2. Рахуємо координати камери (інвертуємо і центруємо по екрану)
+                                    local idealCamX = -castleWorldX + display.contentCenterX
+                                    local idealCamY = -castleWorldY + display.contentCenterY
+
+                                    -- 3. Записуємо їх гравцю!
+                                    player.cameraX = idealCamX
+                                    player.cameraY = idealCamY
                             else
                                     cell.buildingId = "castle_part"
                             end
@@ -147,6 +159,57 @@ function SpawnManager.spawnCastles(world, players)
                 Logger.info("MatchInit", "Player " .. player.id .. " castle placed at " .. cx .. "," .. cy)
             
             
+        end
+    end
+end
+
+-- Функція для перевірки, чи є поруч замки або гори (в radius клітинок)
+local function isSafeToPlantTree(grid, cx, cy, radius, mapWidth, mapHeight)
+    local minX = math.max(1, cx - radius)
+    local maxX = math.min(mapWidth, cx + radius)
+    local minY = math.max(1, cy - radius)
+    local maxY = math.min(mapHeight, cy + radius)
+
+    for y = minY, maxY do
+        for x = minX, maxX do
+            local cell = grid[x][y]
+            if cell then
+                -- Перевіряємо на замок, гору або частину гори
+                local isCastle = (cell.buildingId == "castle")
+                local isObstaclePart = (cell.buildingId == "obstacle_part")
+                local isMountain = (cell.biome and cell.biome.gameplay == "obstacle")
+                
+                if isCastle or isObstaclePart or isMountain then
+                    return false -- Знайшли перешкоду, саджати не можна!
+                end
+            end
+        end
+    end
+    return true
+end
+
+-- Головна функція генерації дерев
+function SpawnManager.generateTrees(grid, mapWidth, mapHeight)
+    local treeChance = 40 -- Шанс 40% посадити дерево на клітинці лісу
+    local spacingRadius = 3 -- Мінімум 3 тайла від замків і гір
+
+    for y = 1, mapHeight do
+        for x = 1, mapWidth do
+            local cell = grid[x][y]
+            
+            -- Якщо це ліс і там ще нічого не збудовано
+            if cell.biome.gameplay == "forest" and not cell.buildingId then
+                -- Перевіряємо сусідів
+                if isSafeToPlantTree(grid, x, y, spacingRadius, mapWidth, mapHeight) then
+                    -- Кидаємо кубик
+                    
+                    if math.random(1, 100) <= treeChance then
+                        cell.buildingId = "tree"
+                        cell.treeCFG = {type = math.random(1,2), dx = math.random(-8,8), dy = math.random(-8,8)}
+                    end
+                    
+                end
+            end
         end
     end
 end

@@ -16,7 +16,7 @@ function World.new(generatedGrid, width, height)
             local cell = self.grid[x][y]
             -- Додаємо ігрові поля в тайл генератора
             cell.ownerId = nil    -- ID гравця, чия це територія
-            cell.buildingId = nil -- ID будівлі, яка тут стоїть
+            --cell.buildingId = nil -- ID будівлі, яка тут стоїть
             cell.unitId = nil     -- ID юніта, який тут стоїть
         end
     end

@@ -7,9 +7,11 @@ application =
 {
 	content =
 	{
+		width = 720,
+		height = 1280,
 		scale = "letterbox", -- letterbox . adaptive
 		xAlign = "center",
-        yAlign = "center",
+		yAlign = "center",
 		fps = 60,
 		
 		--[[

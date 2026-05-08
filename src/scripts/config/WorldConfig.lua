@@ -2,8 +2,8 @@
 local WorldConfig = {
     
     -- 1. БАЗОВІ НАЛАШТУВАННЯ СВІТУ
-    MAP_WIDTH = 100,
-    MAP_HEIGHT = 100,
+    MAP_WIDTH = 300,
+    MAP_HEIGHT = 300,
     CELL_SIZE = 64,
     SEED = os.time(), -- Можна замінити на фіксоване число для тестів
 
@@ -21,10 +21,10 @@ local WorldConfig = {
     GEO = {
         enableOcean = true,
         landPercent = 80,        -- Радіус острова (у відсотках від розміру карти)
-        seaLevel = 0.22,         -- Рівень океану
+        seaLevel = 0.20,         -- Рівень океану
         
         enableRivers = true,
-        riverCount = 12,         -- Кількість спроб генерації річок
+        riverCount = 58,         -- Кількість спроб генерації річок
         riverStartHeight = 0.6,  -- Мінімальна висота гір, звідки може починатись джерело
     },
 

@@ -2,6 +2,8 @@
 local Player = {}
 Player.__index = Player
 
+local rules = require("src.scripts.config.RulesConfig")
+
 --- Конструктор нового гравця
 -- @param id (number) Унікальний номер гравця
 -- @param isBot (boolean) Чи керує цим гравцем ШІ
@@ -18,6 +20,13 @@ function Player.new(id, name, isBot, colorConfig, colorText)
     -- Стан гравця
     self.isBot = isBot or false
     self.isAlive = true
+
+    self.cameraX = nil
+    self.cameraY = nil
+    self.cameraScaleX = 1
+    self.cameraScaleY = 1
+    
+    self.isBankrupt = false
 
     -- Ресурси 
     self.resources = {
@@ -125,6 +134,37 @@ end
 function Player:die()
     self.isAlive = false
     -- Тут в майбутньому можна додати логіку видалення всіх його юнітів з карти
+end
+
+-- Перерахунок дельти (викликається при спавні або зміні ходу)
+function Player:calculateDeltas()
+    local goldDelta = 0
+    
+    -- Допоміжна функція пошуку в каталогах
+    local function getFromCatalog(catalog, id)
+        for _, item in ipairs(catalog) do
+            if item.id == id then return item end
+        end
+        return nil
+    end
+    
+    -- 1. Додаємо дохід від будівель
+    for _, bldg in ipairs(self.buildings) do
+        local bData = getFromCatalog(rules.BUILDINGScatalog, bldg.id)
+        if bData and bData.income then
+            goldDelta = goldDelta + bData.income
+        end
+    end
+    
+    -- 2. Віднімаємо утримання армії
+    for _, unit in ipairs(self.units) do
+        local uData = getFromCatalog(rules.UNITScatalog, unit.id)
+        if uData and uData.upkeep then
+            goldDelta = goldDelta - uData.upkeep
+        end
+    end
+    
+    self.resourceDeltas.gold = goldDelta
 end
 
 return Player

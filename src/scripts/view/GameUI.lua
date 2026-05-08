@@ -220,10 +220,9 @@ function GameUI.new(uiLayer, gameState)
     display.newText(self.bottomGroup, "END >>", self.endTurnBtn.x, self.endTurnBtn.y, UITheme.fontMain, ScreenUtils.px(18))
     
     self.endTurnBtn:addEventListener("tap", function()
-        TurnManager.nextTurn(self.gameState)
-        self:update()
-        local activeP = self.gameState:getCurrentPlayer()
-        ToastManager.show(activeP.name .. "'s Turn", activeP.color)
+        local TurnManager = require("src.scripts.core.TurnManager")
+        -- Передаємо gameState і саму сцену (якщо в тебе є доступ до scene зсередини UI)
+        TurnManager.endTurn(self.gameState, self.sceneRef)
         return true
     end)
 
@@ -362,8 +361,13 @@ function GameUI.new(uiLayer, gameState)
 
     local panelHeight = ScreenUtils.px(280)
     -- РОБИМО ВІКНО НА ВСЮ ШИРИНУ ЕКРАНА
+    local absoluteBottom = display.actualContentHeight
+    
+    -- 2. Беремо звичайний відступ від краю
+    local bottomMargin = ScreenUtils.px(10)
+    
     local panelWidth = display.actualContentWidth  - pad*2
-    local panelTargetY = display.actualContentHeight - panelHeight/2 - pad
+    local panelTargetY = absoluteBottom - bottomMargin - (panelHeight/2) - pad
 
     self.selectionWindow = UIWindow.new({
         parent = self.layer,
@@ -629,6 +633,16 @@ function GameUI:showTileInfo(gridX, gridY, cellData)
     
     if desc == "" then desc = "Empty tile" end
     self.infoDesc.text = desc
+end
+
+function GameUI:destroy()
+    -- Якщо в UI крутяться якісь анімації чи таймери - зупиняємо їх тут
+    
+    -- Обнуляємо посилання, щоб уникнути витоків пам'яті
+    self.gameState = nil
+    self.sceneRef = nil
+    
+    -- Самі графічні об'єкти видалить Composer, бо вони лежать у self.layer
 end
 
 return GameUI

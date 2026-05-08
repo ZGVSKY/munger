@@ -1,198 +1,241 @@
--- src/scripts/world/EntityRenderer.lua
+-- src/scripts/view/EntityRenderer.lua
 local EntityRenderer = {}
 EntityRenderer.__index = EntityRenderer
 
-local config = require("src.scripts.config.WorldConfig")
-local mRand = math.random
-
-local treeSheetOptions = { width = 48, height = 64, numFrames = 3 }
-local treeSheet = graphics.newImageSheet("src/assets/world/trees.png", treeSheetOptions)
-local TREE_FRAMES = { 1, 2, 3 }
-
-function EntityRenderer.new(parentGroup, territoryLayer,  cellSize, startX, startY)
+function EntityRenderer.new(entityLayer, territoryLayer, cellSize, startX, startY)
     local self = setmetatable({}, EntityRenderer)
-    self.group = display.newGroup()
-    self.territoryLayer = territoryLayer
-    parentGroup:insert(self.group)
     
+    self.entityLayer = entityLayer
+    self.territoryLayer = territoryLayer
     self.cellSize = cellSize
     self.startX = startX
     self.startY = startY
     
-    -- Кеш об'єктів (щоб легко видаляти старі при оновленні)
-    self.dynamicObjects = {}
+    self.activeStatics = {}  
+    self.activeUnits = {}    
+    self.activeTerritory = {} 
+    
+    self.lastUpdateX = 99999
+    self.lastUpdateY = 99999
+    
+    -- КЕШУВАННЯ ТЕКСТУР (Preloading)
+    self.textures = {
+        castles = { Blue        = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleBlue.png" }),
+                    Red         = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleRed.png" }),
+                    Green       = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleGreen.png" }),
+                    Pink        = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastlePink.png" }),
+                    LightBlue   = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleLightBlue.png" }),
+                    Orange      = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleOrange.png" }),
+                    Purple      = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastlePurple.png" }),
+                    Yellow      = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleYellow.png" }),
+                    Shadow      = graphics.newTexture({ type = "image", filename = "src/assets/buildings/CastleShadow.png" })
+                  },
+        trees = graphics.newImageSheet("src/assets/world/trees.png", { width = 48, height = 64, numFrames = 3 }),
+        warrior = graphics.newTexture({ type = "image", filename = "src/assets/units/warrior.png" })
+    }
     
     return self
 end
 
---- Викликається кожен раз, коли змінився стан карти
-function EntityRenderer:update(gameState)
-    -- 1. Очищаємо старі об'єкти (Простий і надійний метод для покрокових ігор)
-    for i = #self.dynamicObjects, 1, -1 do
-        if self.dynamicObjects[i] then
-            self.dynamicObjects[i]:removeSelf()
-            self.dynamicObjects[i] = nil
-        end
+-- ==========================================
+-- СПАВН ОБ'ЄКТІВ 
+-- ==========================================
+function EntityRenderer:spawnStatic(x, y, cellData, screenX, screenY)
+    local objGroup = display.newGroup()
+    objGroup.x = screenX
+    objGroup.y = screenY
+    objGroup.gridY = y 
+    
+    if cellData.buildingId == "castle" then
+        local tex = self.textures.castles
+        print(cellData.castleColor)
+        local castleImg = display.newImageRect(objGroup, tex[cellData.castleColor].filename, tex[cellData.castleColor].baseDir, self.cellSize*3, self.cellSize*3)
+        
+        
+    elseif cellData.buildingId == "tree" then
+        local tex = self.textures.trees
+        display.newImageRect(objGroup, tex, cellData.treeCFG['type'], 96, 128)
+        objGroup.x = objGroup.x+  cellData.treeCFG['dx']
+        objGroup.y = objGroup.y+  cellData.treeCFG['dy']
     end
+    
+    self.entityLayer:insert(objGroup)
+    return objGroup
+end
 
+function EntityRenderer:spawnUnit(unitData, screenX, screenY)
+    local unitGroup = display.newGroup()
+    unitGroup.x = screenX
+    unitGroup.y = screenY
+    unitGroup.gridY = unitData.y 
+    
+    if self.textures.warrior then
+        local tex = self.textures.warrior
+        local warriorImg = display.newImageRect(unitGroup, tex.filename, tex.baseDir, self.cellSize * 0.8, self.cellSize * 0.8)
+        if unitData.ownerColor then warriorImg:setFillColor(unitData.ownerColor[1], unitData.ownerColor[2], unitData.ownerColor[3]) end
+    end
+    
+    self.entityLayer:insert(unitGroup)
+    return unitGroup
+end
+
+-- ЛОГІКА ТЕРИТОРІЙ 
+function EntityRenderer:spawnTerritory(x, y, cellData, screenX, screenY, gameState)
+    local terrGroup = display.newGroup()
+    terrGroup.x = screenX
+    terrGroup.y = screenY
+    
     local world = gameState.world
+    local player = gameState.players[cellData.ownerId]
+    
+    if player then
+        local c = player.color
+        
+        -- 1. ЗАОКРУГЛЕНА ЗАЛИВКА ТЕРИТОРІЇ
+        -- Малюємо в 0, 0, тому що сама група вже стоїть на потрібних координатах (screenX, screenY)
+        local cornerRadius = 1
+        local territoryRect = display.newRoundedRect(terrGroup, 0, 0, self.cellSize, self.cellSize, cornerRadius)
+        territoryRect:setFillColor(c[1], c[2], c[3], 0.25)
+        
+        -- 2. РОЗУМНІ КОРДОНИ (Без води і з м'якими краями)
+        local function isSameOwnerOrWater(nx, ny)
+            if nx >= 1 and nx <= world.width and ny >= 1 and ny <= world.height then
+                local nCell = world:getTile(nx, ny)
+                local isWater = false
+                if nCell.biome and (nCell.biome.gameplay == "water" or nCell.biome.gameplay == "river") then
+                    isWater = true
+                end
+                return nCell.ownerId == cellData.ownerId or isWater
+            end
+            return false 
+        end
 
-    -- 2. Проходимо по всій матриці і шукаємо, що малювати
-    for y = 1, world.height do
-        for x = 1, world.width do
-            local cell = world:getTile(x, y)
+        local hs = self.cellSize / 2
+        local th = 8 -- Товщина кордону
+
+        local function drawEdge(ex, ey, ew, eh)
+            local edge = display.newRoundedRect(terrGroup, ex, ey, ew, eh, 1)
+            edge:setFillColor(c[1], c[2], c[3], 1)
+        end
+
+        -- Якщо зверху чужа земля (і не вода) - малюємо кордон
+        if not isSameOwnerOrWater(x, y - 1) then drawEdge(0, -hs + th/2, self.cellSize, th) end
+        -- Якщо знизу
+        if not isSameOwnerOrWater(x, y + 1) then drawEdge(0, hs - th/2, self.cellSize, th) end
+        -- Якщо зліва
+        if not isSameOwnerOrWater(x - 1, y) then drawEdge(-hs + th/2, 0, th, self.cellSize) end
+        -- Якщо справа
+        if not isSameOwnerOrWater(x + 1, y) then drawEdge(hs - th/2, 0, th, self.cellSize) end
+    end
+    
+    self.territoryLayer:insert(terrGroup)
+    return terrGroup
+end
+
+-- ==========================================
+-- JIT РЕНДЕР (Логіка видимості)
+-- ==========================================
+function EntityRenderer:update(cameraGroup, gameState)
+    if not cameraGroup or not gameState or not gameState.world then return end
+
+    local dx = math.abs(cameraGroup.x - self.lastUpdateX)
+    local dy = math.abs(cameraGroup.y - self.lastUpdateY)
+    if dx < 20 and dy < 20 then return end
+    
+    self.lastUpdateX, self.lastUpdateY = cameraGroup.x, cameraGroup.y
+
+    local screenX1, screenY1 = display.screenOriginX, display.screenOriginY
+    local screenX2, screenY2 = screenX1 + display.actualContentWidth, screenY1 + display.actualContentHeight
+
+    local worldMinX, worldMinY = cameraGroup:contentToLocal(screenX1, screenY1)
+    local worldMaxX, worldMaxY = cameraGroup:contentToLocal(screenX2, screenY2)
+
+    local minGridX = math.floor((worldMinX - self.startX + (self.cellSize / 2)) / self.cellSize) + 1
+    local maxGridX = math.floor((worldMaxX - self.startX + (self.cellSize / 2)) / self.cellSize) + 1
+    local minGridY = math.floor((worldMinY - self.startY + (self.cellSize / 2)) / self.cellSize) + 1
+    local maxGridY = math.floor((worldMaxY - self.startY + (self.cellSize / 2)) / self.cellSize) + 1
+
+    local mapWidth = gameState.world.width
+    local mapHeight = gameState.world.height
+    
+    minGridX = math.max(1, minGridX - 2)
+    maxGridX = math.min(mapWidth, maxGridX + 2)
+    minGridY = math.max(1, minGridY - 2)
+    maxGridY = math.min(mapHeight, maxGridY + 2)
+
+    local visibleCells = {} 
+    local needsSorting = false 
+
+    for y = minGridY, maxGridY do
+        for x = minGridX, maxGridX do
+            local cellId = x .. "_" .. y
+            visibleCells[cellId] = true
             
-            -- Вираховуємо точні координати центру клітинки
-            local cx = math.floor(self.startX + (x - 1) * self.cellSize)
-            local cy = math.floor(self.startY + (y - 1) * self.cellSize)
+            local cellData = gameState.world:getTile(x, y)
+            if cellData then
+                local screenX = self.startX + (x - 1) * self.cellSize
+                local screenY = self.startY + (y - 1) * self.cellSize
 
-            -- А) МАЛЮЄМО ТЕРИТОРІЮ (Border/Overlay)
-            if cell.ownerId then
-                local player = gameState.players[cell.ownerId]
-                if player then
-                    -- 1. ЗАОКРУГЛЕНА ЗАЛИВКА ТЕРИТОРІЇ
-                    -- Використовуємо newRoundedRect (радіус 6 пікселів). 
-                    -- Це створить дуже стильний паттерн на стиках клітинок!
-                    local cornerRadius = 1
-                    local territoryRect = display.newRoundedRect(self.territoryLayer, cx, cy, self.cellSize, self.cellSize, cornerRadius)
-                    territoryRect:setFillColor(player.color[1], player.color[2], player.color[3], 0.25)
-                    table.insert(self.dynamicObjects, territoryRect)
-
-                    -- 2. РОЗУМНІ КОРДОНИ (Без води і з м'якими краями)
-                    -- Функція тепер перевіряє: "Чи це наша земля АБО чи це вода?"
-                    local function isSameOwnerOrWater(nx, ny)
-                        if nx >= 1 and nx <= world.width and ny >= 1 and ny <= world.height then
-                            local nCell = world:getTile(nx, ny)
-                            
-                            -- Перевіряємо, чи це вода
-                            local isWater = false
-                            if nCell.biome and (nCell.biome.gameplay == "water" or nCell.biome.gameplay == "river") then
-                                isWater = true
-                            end
-                            
-                            -- Якщо це наш тайл АБО це вода - ми НЕ малюємо кордон
-                            return nCell.ownerId == cell.ownerId or isWater
-                        end
-                        return false 
-                    end
-
-                    local hs = self.cellSize / 2
-                    local th = 8 -- Товщина кордону
-                    local c = player.color
-
-                    -- Створюємо допоміжну функцію для малювання м'яких ліній (капсул)
-                    local function drawEdge(ex, ey, ew, eh)
-                        -- th/2 робить краї лінії ідеально круглими
-                        local edge = display.newRoundedRect(self.territoryLayer, ex, ey, ew, eh, 1)
-                        edge:setFillColor(c[1], c[2], c[3], 1)
-                        table.insert(self.dynamicObjects, edge)
-                    end
-
-                    -- Якщо зверху чужа земля (і не вода) - малюємо кордон
-                    if not isSameOwnerOrWater(x, y - 1) then
-                        drawEdge(cx, cy - hs + th/2, self.cellSize, th)
-                    end
-                    -- Якщо знизу
-                    if not isSameOwnerOrWater(x, y + 1) then
-                        drawEdge(cx, cy + hs - th/2, self.cellSize, th)
-                    end
-                    -- Якщо зліва
-                    if not isSameOwnerOrWater(x - 1, y) then
-                        drawEdge(cx - hs + th/2, cy, th, self.cellSize)
-                    end
-                    -- Якщо справа
-                    if not isSameOwnerOrWater(x + 1, y) then
-                        drawEdge(cx + hs - th/2, cy, th, self.cellSize)
+                if cellData.buildingId then
+                    if not self.activeStatics[cellId] then
+                        self.activeStatics[cellId] = self:spawnStatic(x, y, cellData, screenX, screenY)
+                        needsSorting = true
                     end
                 end
-            end
 
-            -- Б) МАЛЮЄМО БУДІВЛІ (Поки це сірі квадрати з іконкою)
-            if cell.buildingId then
-                if cell.buildingId == "castle" then
-                    -- 1. МАЛЮЄМО ГОЛОВНИЙ ЗАМОК (3x3)
-                    -- Шукаємо картинку для конкретного гравця (castle_1.png, castle_2.png)
-                    
-                    local spritePath = "src/assets/buildings/Castle" .. cell.castleColor .. ".png"
-                    local castleShadow = "src/assets/buildings/CastleShadow.png"
-                    
-                    -- Розмір замку: 3 тайли в ширину і 3 в висоту
-                    local castleSize =  self.cellSize * 3
-                    local castleShadowImg = display.newImageRect(self.group, castleShadow, castleSize+16, castleSize+16)
-                    if castleShadowImg then
-                        castleShadowImg.x = cx+10
-                        castleShadowImg.y = cy-10
-                        --table.insert(self.dynamicObjects, castleImg)
+                if cellData.ownerId then
+                    if not self.activeTerritory[cellId] then
+                        -- ТЕПЕР ПЕРЕДАЄМО gameState СЮДИ, щоб працювала перевірка сусідів
+                        self.activeTerritory[cellId] = self:spawnTerritory(x, y, cellData, screenX, screenY, gameState)
                     end
-                    
-                    local castleImg = display.newImageRect(self.group, spritePath, castleSize, castleSize)
-                    if castleImg then
-                        castleImg.x = cx
-                        castleImg.y = cy
-                        table.insert(self.dynamicObjects, castleImg)
-                    else
-                        -- Заглушка, якщо картинку не знайдено
-                        local bRect = display.newRect(self.group, cx, cy, castleSize, castleSize)
-                        bRect:setFillColor(0.2, 0.2, 0.2)
-                        table.insert(self.dynamicObjects, bRect)
-                    end
-
-                elseif cell.buildingId == "castle_part" then
-                    -- 2. ЧАСТИНИ ЗАМКУ
-                    -- Нічого не малюємо! Головна картинка "castle" вже перекрила ці тайли.
-                    -- Але вони існують у даних, щоб сюди не можна було клікнути чи зайти.
-
-                else
-                    -- 3. ІНШІ БУДІВЛІ (Ферми, Вежі і т.д. - старий код)
-                    local bRect = display.newRoundedRect(self.group, cx, cy, self.cellSize * 0.7, self.cellSize * 0.7, 4)
-                    bRect:setFillColor(0.4, 0.4, 0.4)
-                    bRect.strokeWidth = 2
-                    bRect:setStrokeColor(0.2, 0.2, 0.2)
-                    
-                    local bText = display.newText(self.group, "B", cx, cy, native.systemFontBold, 16)
-                    bText:setFillColor(1, 1, 1)
-                    
-                    table.insert(self.dynamicObjects, bRect)
-                    table.insert(self.dynamicObjects, bText)
                 end
-            end
 
-            if cell.biome and cell.biome.gameplay == "forest" and not cell.buildingId then
-                -- Використовуємо псевдорандом на основі координат, щоб дерева завжди виглядали однаково
-                local frameIdx = mRand(1,3)
-                       
-
-                -- Малюємо дерево
-                local tree = display.newImageRect(self.group, treeSheet, TREE_FRAMES[frameIdx], 96, 128)
-                tree.anchorY = 1 -- Якір знизу, щоб дерево стояло на клітинці
-                tree.x = cx + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset)
-                tree.y = cy + (self.cellSize / 2) + mRand(-config.RENDER.treeOffset, config.RENDER.treeOffset) 
-                
-                -- Трохи змінюємо відтінок для різноманітності
-                local shade = 0.8 + ((x + y) % 3) * 0.1
-                tree:setFillColor(shade, shade, shade)
-
-                table.insert(self.dynamicObjects, tree)
-            end
-
-            -- В) МАЛЮЄМО ЮНІТІВ (Поки це кольорові кружечки)
-            if cell.unitId then
-                local player = gameState.players[cell.ownerId]
-                local uColor = player and player.color or {1, 1, 1}
-                
-                local uCircle = display.newCircle(self.group, cx, cy, self.cellSize * 0.35)
-                uCircle:setFillColor(unpack(uColor))
-                uCircle.strokeWidth = 2
-                uCircle:setStrokeColor(0, 0, 0)
-                
-                local uText = display.newText(self.group, "U", cx, cy, native.systemFontBold, 14)
-                uText:setFillColor(0, 0, 0)
-
-                table.insert(self.dynamicObjects, uCircle)
-                table.insert(self.dynamicObjects, uText)
+                if cellData.unit then
+                    local unitId = cellData.unit.id or cellId 
+                    if not self.activeUnits[unitId] then
+                        self.activeUnits[unitId] = self:spawnUnit(cellData.unit, screenX, screenY)
+                        needsSorting = true
+                    end
+                end
             end
         end
     end
+
+    for id, obj in pairs(self.activeStatics) do
+        if not visibleCells[id] then obj:removeSelf(); self.activeStatics[id] = nil end
+    end
+    
+    for id, obj in pairs(self.activeTerritory) do
+        if not visibleCells[id] then obj:removeSelf(); self.activeTerritory[id] = nil end
+    end
+
+    for unitId, obj in pairs(self.activeUnits) do
+        local uX = math.floor((obj.x - self.startX + (self.cellSize / 2)) / self.cellSize) + 1
+        local uY = math.floor((obj.y - self.startY + (self.cellSize / 2)) / self.cellSize) + 1
+        local currentCellId = uX .. "_" .. uY
+        
+        if not visibleCells[currentCellId] then
+            obj:removeSelf()
+            self.activeUnits[unitId] = nil
+        end
+    end
+
+    if needsSorting and self.entityLayer.numChildren > 1 then
+        local children = {}
+        for i = 1, self.entityLayer.numChildren do children[i] = self.entityLayer[i] end
+        table.sort(children, function(a, b) return (a.gridY or 0) < (b.gridY or 0) end)
+        for i = 1, #children do self.entityLayer:insert(children[i]) end
+    end
+end
+
+function EntityRenderer:destroy()
+    for _, obj in pairs(self.activeStatics) do obj:removeSelf() end
+    for _, obj in pairs(self.activeTerritory) do obj:removeSelf() end
+    for _, obj in pairs(self.activeUnits) do obj:removeSelf() end
+    
+    for k, tex in pairs(self.textures) do tex:releaseSelf() end
+    
+    self.activeStatics, self.activeTerritory, self.activeUnits, self.textures = {}, {}, {}, {}
 end
 
 return EntityRenderer

@@ -203,8 +203,12 @@ local function enforceCoastlines(grid, config)
 
     for _, cell in ipairs(waterToSand) do
         -- Використовуємо конфіг для висоти берега
-        cell.biome = Biomes.getBiome(config.POST_PROCESS.coastHeight, cell.moisture, false, nil)
+        cell.biome = Biomes.TYPES.BEACH
         cell.type = cell.biome.id
+        cell.gameplay = "coast" -- Надійно фіксуємо геймплей
+        
+        -- Очищаємо згладжений синій колір води, щоб рендер взяв жовтий колір піску з біома!
+        cell.renderColor = nil
     end
 end
 
@@ -297,12 +301,13 @@ end
 
 local function smoothBiomeColors(grid, config)
     local blurRadius = config.POST_PROCESS.smoothColorsRadius
+    local width, height = config.MAP_WIDTH, config.MAP_HEIGHT
     local tempColors = {}
+    for x = 1, width do tempColors[x] = {} end
 
     -- ОПТИМІЗАЦІЯ: Уникаємо створення зайвих таблиць у внутрішніх циклах
-    for x = 1, config.MAP_WIDTH do
-        tempColors[x] = {}
-        for y = 1, config.MAP_HEIGHT do
+    for x = 1, width do
+        for y = 1, height do
             local cell = grid[x][y]
             local gameplayType = cell.biome and cell.biome.gameplay or "water"
             
@@ -311,17 +316,19 @@ local function smoothBiomeColors(grid, config)
                 local count = 0
                 
                 for nx = x - blurRadius, x + blurRadius do
-                    for ny = y - blurRadius, y + blurRadius do
-                        if nx >= 1 and nx <= config.MAP_WIDTH and ny >= 1 and ny <= config.MAP_HEIGHT then
-                            local nCell = grid[nx][ny]
-                            local nGameplay = nCell.biome and nCell.biome.gameplay or "water"
-                            
-                            if nGameplay == gameplayType and nCell.biome and nCell.biome.color then
-                                local c = nCell.biome.color
-                                r = r + c[1]
-                                g = g + c[2]
-                                b = b + c[3]
-                                count = count + 1
+                    if nx >= 1 and nx <= width then
+                        local column = grid[nx]
+                        for ny = y - blurRadius, y + blurRadius do
+                            if ny >= 1 and ny <= height then
+                                local nCell = column[ny]
+                                local nGameplay = nCell.biome and nCell.biome.gameplay or "water"
+                                if nGameplay == gameplayType and nCell.biome and nCell.biome.color then
+                                    local c = nCell.biome.color
+                                    r = r + c[1]
+                                    g = g + c[2]
+                                    b = b + c[3]
+                                    count = count + 1
+                                end
                             end
                         end
                     end
@@ -338,16 +345,57 @@ local function smoothBiomeColors(grid, config)
         end
     end
 
-    for x = 1, config.MAP_WIDTH do
-        for y = 1, config.MAP_HEIGHT do
+    for x = 1, width do
+        for y = 1, height do
             grid[x][y].renderColor = tempColors[x][y]
         end
     end
 end
 
---------------------------------------------------------------------------------
--- ПУБЛІЧНИЙ ІНТЕРФЕЙС
---------------------------------------------------------------------------------
+-- ==========================================
+-- ПОСТ-ОБРОБКА ГІР (Створення масивів гір та тіней)
+-- Виклич цю функцію після генерації всіх біомів!
+-- ==========================================
+function processObstacles(grid, width, height)
+    for y = 1, height do
+        for x = 1, width do
+            local cell = grid[x][y]
+            
+            if cell.biome and cell.biome.gameplay == "obstacle" then
+                -- 1. СТВОРЕННЯ HIGH_OBSTACLE (Двошарові гори)
+                -- Якщо навколо цієї гори з усіх 4 боків теж є гори - робимо її високою!
+                local isSurrounded = true
+                local neighbors = {{0,-1}, {0,1}, {-1,0}, {1,0}}
+                
+                for _, n in ipairs(neighbors) do
+                    local nx, ny = x + n[1], y + n[2]
+                    if nx >= 1 and nx <= width and ny >= 1 and ny <= height then
+                        local nGameplay = grid[nx][ny].biome.gameplay
+                        if nGameplay ~= "obstacle" and nGameplay ~= "high_obstacle" then
+                            isSurrounded = false
+                            break
+                        end
+                    end
+                end
+                
+                if isSurrounded and math.random() > 0.4 then
+                    cell.biome.gameplay = "high_obstacle" -- Змінюємо тип!
+                end
+
+                -- 2. ЗАХИСТ ВІД ДЕКОРАЦІЙ (Розмічаємо підніжжя)
+                -- Розмічаємо тайли знизу та по діагоналях, де буде намальована тінь/база гори
+                local parts = {{0,1}, {0,2}, {-1,1}, {1,1}, {-1,2}, {1,2}}
+                for _, p in ipairs(parts) do
+                    local tx, ty = x + p[1], y + p[2]
+                    if tx >= 1 and tx <= width and ty >= 1 and ty <= height then
+                        -- Ставимо прапорець, що це тінь гори. На ній НЕ БУДЕ рости трава.
+                        grid[tx][ty].isObstaclePart = true 
+                    end
+                end
+            end
+        end
+    end
+end
 
 --- Створює корутину генерації світу
 --------------------------------------------------------------------------------
@@ -451,8 +499,9 @@ function WorldGenerator.createGenerationCoroutine(customConfig)
         -- ФАЗА 7: Пост-обробка
         Logger.info("Gen", "Phase 7: Post-Processing Shapes")
         controlClusterSizes(grid, config, "forest", config.POST_PROCESS.forestMinSize, config.POST_PROCESS.forestMaxSize)
-        controlClusterSizes(grid, config, "obstacle", config.POST_PROCESS.obstacleMinSize, config.POST_PROCESS.obstacleMaxSize)
+        --controlClusterSizes(grid, config, "obstacle", config.POST_PROCESS.obstacleMinSize, config.POST_PROCESS.obstacleMaxSize)
         enforceCoastlines(grid, config)
+        processObstacles(grid, config.MAP_WIDTH, config.MAP_HEIGHT)
         coroutine.yield({status="Post-Processing...", progress=0.90})
 
         -- ФАЗА 8: Згладжування кольорів

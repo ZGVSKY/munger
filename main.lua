@@ -21,10 +21,11 @@ widget.setTheme("widget_theme_android_holo_dark")               -- switch widget
 display.setDefault("magTextureFilter", "nearest")
 display.setDefault("minTextureFilter", "nearest")
 
-composer = require( "composer" )                                -- create a composer object used to control scenes
+local composer = require( "composer" )                                -- create a composer object used to control scenes
 composer.recycleOnSceneChange = true                            -- enable auto-recycle on scene change
 composer.isDebug = true                                         -- enable composer debug info
 math.randomseed(os.time())                                      -- setup global random seed
+math.random(); math.random(); math.random()                     -- pop some seeds for better randomness in Lua 5.1
 -- go to main menu scene
 
 
